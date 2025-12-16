@@ -12,12 +12,12 @@
           extend: {
             colors: {
               slate: {
-                750: '#2d3748', // Custom shade between 700 and 800
-                850: '#1a202c', // Custom darker slate
+                750: '#2d3748',
+                850: '#1a202c',
                 950: '#0f172a',
               },
               primary: {
-                500: '#10b981', // Emerald green like the image
+                500: '#10b981',
                 600: '#059669',
               }
             }
@@ -26,36 +26,16 @@
       }
     </script>
     <style>
-      /* Custom scrollbar for dark theme */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #1e293b; 
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #475569; 
-        border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #64748b; 
-      }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: #1e293b; }
+      ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #64748b; }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "recharts": "https://esm.sh/recharts@^3.6.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "lucide-react": "https://esm.sh/lucide-react@^0.561.0",
-    "@google/genai": "https://esm.sh/@google/genai@^1.33.0"
-  }
-}
-</script>
 </head>
   <body class="bg-slate-900 text-slate-100 antialiased selection:bg-primary-500 selection:text-white">
     <div id="root"></div>
+    
+    <script type="module" src="/index.tsx"></script>
+    
   </body>
 </html>
