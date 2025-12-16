@@ -1,0 +1,8 @@
+{
+  "name": "Gestor Financiero Lidutech AI",
+  "description": "Control financiero personal con IA para lectura de facturas y notas de voz.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
