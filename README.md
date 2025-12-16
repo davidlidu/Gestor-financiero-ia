@@ -2,7 +2,7 @@
 
 Una aplicación web progresiva (PWA) para la gestión de finanzas personales, potenciada por Inteligencia Artificial (Google Gemini) para el procesamiento de facturas y notas de voz.
 
-## Características Principales
+## Características Principales 
 
 1.  **Dashboard Completo**: 
     *   Visualización de saldo, ingresos, egresos y **total ahorrado**.
