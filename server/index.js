@@ -4,23 +4,34 @@ const { Pool } = require('pg');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
 
 const app = express();
 
-// Configuración CORS (Acepta peticiones desde cualquier lugar o configura tu dominio)
+// --- MIDDLEWARES GLOBALES ---
 app.use(cors());
 app.use(express.json());
 
 // --- CONFIGURACIÓN BASE DE DATOS ---
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  // IMPORTANTE: SSL es necesario para bases de datos en la nube (Neon, Supabase, Render, y a veces Dokploy interno)
+  // SSL condicional: Dokploy interno suele requerir false, nubes externas true
   ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false }
+});
+
+// --- CONFIGURACIÓN EMAIL (NODEMAILER) ---
+const transporter = nodemailer.createTransport({
+  service: 'gmail', // O tu proveedor SMTP preferido
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS 
+  }
 });
 
 // --- INICIALIZACIÓN DE TABLAS ---
 const initDB = async () => {
   try {
+    // Tabla Usuarios (Actualizada con columnas para 2FA)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -29,9 +40,14 @@ const initDB = async () => {
         password VARCHAR(255) NOT NULL,
         avatar TEXT,
         n8n_url TEXT,
+        two_factor_code VARCHAR(10),
+        two_factor_expires TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    `);
 
+    // Tabla Transacciones
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS transactions (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -44,7 +60,10 @@ const initDB = async () => {
         payment_method VARCHAR(50), -- 'cash', 'transfer'
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    `);
 
+    // Tabla Ahorros
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS savings_goals (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -55,6 +74,7 @@ const initDB = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    
     console.log("Base de datos inicializada correctamente.");
   } catch (err) {
     console.error("Error inicializando DB:", err);
@@ -62,7 +82,7 @@ const initDB = async () => {
 };
 initDB();
 
-// --- MIDDLEWARE DE AUTENTICACIÓN ---
+// --- MIDDLEWARE DE AUTENTICACIÓN (JWT) ---
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
@@ -71,14 +91,14 @@ const authenticateToken = (req, res, next) => {
 
   jwt.verify(token, process.env.JWT_SECRET || 'secret_key_lidutech', (err, user) => {
     if (err) return res.sendStatus(403);
-    req.user = user; // { id: 1, iat: ... }
+    req.user = user;
     next();
   });
 };
 
-// ================= RUTAS DE AUTH =================
+// ================= RUTAS DE AUTENTICACIÓN =================
 
-// Registro
+// 1. Registro
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -92,14 +112,14 @@ app.post('/api/auth/register', async (req, res) => {
     );
     res.json({ success: true, user: result.rows[0] });
   } catch (err) {
-    if (err.code === '23505') { // Código error duplicado en Postgres
+    if (err.code === '23505') { 
       return res.status(400).json({ message: "El correo ya está registrado." });
     }
     res.status(500).json({ error: err.message });
   }
 });
 
-// Login
+// 2. Login (Paso 1: Valida pass, genera código y envía email)
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -112,12 +132,95 @@ app.post('/api/auth/login', async (req, res) => {
     
     if (!validPassword) return res.status(401).json({ message: "Contraseña incorrecta" });
 
-    // Generar Token
-    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET || 'secret_key_lidutech', { expiresIn: '7d' });
+    // --- LÓGICA 2FA ---
+    // Generar código de 6 dígitos
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
     
-    // Devolver datos (sin password)
+    // Guardar en DB (Expira en 10 min)
+    await pool.query(
+      "UPDATE users SET two_factor_code = $1, two_factor_expires = CURRENT_TIMESTAMP + interval '10 minutes' WHERE id = $2",
+      [code, user.id]
+    );
+
+    // Enviar Email
+    const mailOptions = {
+      from: '"Lidutech Finanzas" <no-reply@lidutech.net>',
+      to: user.email,
+      subject: 'Tu código de verificación - Lidutech',
+      html: `
+        <div style="font-family: Arial, sans-serif; color: #333;">
+          <h2>Verificación de Seguridad</h2>
+          <p>Tu código para ingresar es:</p>
+          <h1 style="color: #10b981; letter-spacing: 5px;">${code}</h1>
+          <p>Este código expira en 10 minutos.</p>
+        </div>
+      `
+    };
+
+    // Usamos await para asegurar que el correo salió antes de responder al front
+    await transporter.sendMail(mailOptions);
+
+    // Token Temporal (solo sirve para llamar al endpoint verify-2fa)
+    const tempToken = jwt.sign(
+      { id: user.id, stage: '2fa_pending' }, 
+      process.env.JWT_SECRET || 'secret_key_lidutech', 
+      { expiresIn: '10m' }
+    );
+    
     res.json({ 
-      token, 
+      requires2FA: true, 
+      tempToken,
+      message: `Código enviado a ${user.email}` 
+    });
+
+  } catch (err) {
+    console.error("Error en login/email:", err);
+    res.status(500).json({ error: "Error al procesar la solicitud. Verifica las credenciales de correo." });
+  }
+});
+
+// 3. Verificar 2FA (Paso 2: Valida código y entrega token final)
+app.post('/api/auth/verify-2fa', async (req, res) => {
+  try {
+    const { tempToken, code } = req.body;
+
+    // Validar token temporal
+    let decoded;
+    try {
+      decoded = jwt.verify(tempToken, process.env.JWT_SECRET || 'secret_key_lidutech');
+      if (decoded.stage !== '2fa_pending') throw new Error("Token incorrecto");
+    } catch (e) {
+      return res.status(401).json({ message: "Sesión expirada o inválida. Inicia login de nuevo." });
+    }
+
+    // Buscar usuario en DB
+    const result = await pool.query('SELECT * FROM users WHERE id = $1', [decoded.id]);
+    const user = result.rows[0];
+
+    if (!user.two_factor_code) return res.status(400).json({ message: "No se ha solicitado ningún código." });
+    
+    // Validar coincidencia
+    if (user.two_factor_code !== code) {
+      return res.status(400).json({ message: "Código incorrecto." });
+    }
+
+    // Validar expiración
+    if (new Date() > new Date(user.two_factor_expires)) {
+      return res.status(400).json({ message: "El código ha expirado." });
+    }
+
+    // ÉXITO: Limpiar código usado
+    await pool.query("UPDATE users SET two_factor_code = NULL, two_factor_expires = NULL WHERE id = $1", [user.id]);
+
+    // Generar Token Final (Larga duración)
+    const finalToken = jwt.sign(
+      { id: user.id }, 
+      process.env.JWT_SECRET || 'secret_key_lidutech', 
+      { expiresIn: '7d' }
+    );
+
+    res.json({ 
+      token: finalToken, 
       user: { 
         id: user.id, 
         name: user.name, 
@@ -126,12 +229,13 @@ app.post('/api/auth/login', async (req, res) => {
         n8nUrl: user.n8n_url 
       } 
     });
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Obtener Usuario Actual (Persistencia de Sesión)
+// 4. Obtener Usuario Actual (Persistencia)
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query('SELECT id, name, email, avatar, n8n_url FROM users WHERE id = $1', [req.user.id]);
@@ -144,7 +248,7 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
         name: user.name,
         email: user.email,
         avatar: user.avatar,
-        n8nUrl: user.n8n_url // Convertimos snake_case a camelCase para el frontend
+        n8nUrl: user.n8n_url 
       }
     });
   } catch (err) {
@@ -161,11 +265,10 @@ app.get('/api/transactions', authenticateToken, async (req, res) => {
       'SELECT id, amount, description, date, category, type, method, payment_method as "paymentMethod" FROM transactions WHERE user_id = $1 ORDER BY date DESC', 
       [req.user.id]
     );
-    // Convertimos amounts de string (Postgres numeric) a number (JS)
     const transactions = result.rows.map(t => ({
       ...t,
       amount: parseFloat(t.amount),
-      id: t.id.toString() // El frontend espera IDs como string
+      id: t.id.toString()
     }));
     res.json(transactions);
   } catch (err) {
@@ -182,6 +285,27 @@ app.post('/api/transactions', authenticateToken, async (req, res) => {
       [req.user.id, amount, description, date, category, type, method, paymentMethod]
     );
     res.json({ success: true, id: result.rows[0].id.toString() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/transactions/:id', authenticateToken, async (req, res) => {
+  try {
+    const { amount, description, date, category, type, method, paymentMethod } = req.body;
+    await pool.query(
+      `UPDATE transactions SET 
+        amount = COALESCE($1, amount), 
+        description = COALESCE($2, description), 
+        date = COALESCE($3, date), 
+        category = COALESCE($4, category), 
+        type = COALESCE($5, type),
+        method = COALESCE($6, method),
+        payment_method = COALESCE($7, payment_method)
+       WHERE id = $8 AND user_id = $9`,
+      [amount, description, date, category, type, method, paymentMethod, req.params.id, req.user.id]
+    );
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -232,7 +356,6 @@ app.post('/api/savings', authenticateToken, async (req, res) => {
 app.put('/api/savings/:id', authenticateToken, async (req, res) => {
   try {
     const { name, targetAmount, currentAmount, color } = req.body;
-    // Solo actualizamos los campos que vengan en el body
     await pool.query(
       `UPDATE savings_goals SET 
         name = COALESCE($1, name), 
@@ -247,28 +370,6 @@ app.put('/api/savings/:id', authenticateToken, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-// Actualizar Transacción
-app.put('/api/transactions/:id', authenticateToken, async (req, res) => {
-    try {
-      const { amount, description, date, category, type, method, paymentMethod } = req.body;
-      await pool.query(
-        `UPDATE transactions SET 
-          amount = COALESCE($1, amount), 
-          description = COALESCE($2, description), 
-          date = COALESCE($3, date), 
-          category = COALESCE($4, category), 
-          type = COALESCE($5, type),
-          method = COALESCE($6, method),
-          payment_method = COALESCE($7, payment_method)
-         WHERE id = $8 AND user_id = $9`,
-        [amount, description, date, category, type, method, paymentMethod, req.params.id, req.user.id]
-      );
-      res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
 
 app.delete('/api/savings/:id', authenticateToken, async (req, res) => {
   try {
@@ -304,5 +405,6 @@ app.put('/api/user/settings', authenticateToken, async (req, res) => {
   }
 });
 
+// --- START SERVER ---
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`Backend Lidutech corriendo en puerto ${PORT}`));
