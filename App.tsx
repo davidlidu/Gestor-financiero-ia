@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Settings, Plus, LayoutDashboard, Wallet, PieChart, Menu, LogOut, Trash2, Edit2, TrendingUp, TrendingDown, DollarSign, Pencil, Filter, X, Lock, Mail, User as UserIcon, ShieldCheck, PiggyBank, ArrowRightLeft, Link as LinkIcon, Save, Camera, UploadCloud, Download } from 'lucide-react';
-import { Transaction, UserProfile, SavingsGoal, AuthState } from './types';
+import { Transaction, UserProfile, SavingsGoal, AuthState, Category } from './types';
 import { StorageService } from './services/storageService';
 import { AuthService } from './services/authService';
 import { BalanceAreaChart, CategoryPieChart, ComparisonBarChart } from './components/Charts';
@@ -8,6 +8,8 @@ import { TransactionModal } from './components/TransactionModal';
 import { SavingsModal } from './components/SavingsModal';
 import { TransferModal } from './components/TransferModal'; // Imported TransferModal
 import { INITIAL_SAVINGS, DEFAULT_EXPENSE_CATEGORIES } from './constants';
+import * as LucideIcons from 'lucide-react';
+const [categories, setCategories] = useState<Category[]>([]);
 
 function App() {
   // --- Auth State ---
@@ -56,6 +58,9 @@ function App() {
   const [settingsAvatar, setSettingsAvatar] = useState('');
   const [settingsNewPassword, setSettingsNewPassword] = useState('');
 
+  const [newCategoryIcon, setNewCategoryIcon] = useState('DollarSign');
+  
+
   // --- Effects ---
   useEffect(() => {
     checkSession();
@@ -73,21 +78,39 @@ function App() {
     setAuthLoading(false);
   };
 
-  const loadUserData = async () => {
-    try {
-      const txs = await StorageService.getTransactions();
-      setTransactions(txs);
-      
-      const svg = await StorageService.getSavings();
-      setSavings(svg);
-      
-      // Categorías siguen siendo síncronas (LocalStorage)
-      setExpenseCategories(StorageService.getExpenseCategories());
-      setIncomeCategories(StorageService.getIncomeCategories());
-    } catch (error) {
-      console.error("Error cargando datos", error);
-    }
-  };
+    // --- Cargar Datos (Actualiza tu loadUserData) ---
+    const loadUserData = async () => {
+        try {
+            const [txData, savingsData, catsData] = await Promise.all([
+                StorageService.getTransactions(),
+                StorageService.getSavings(),
+                StorageService.getCategories() // <--- Ahora cargamos desde API
+            ]);
+            setTransactions(txData);
+            setSavings(savingsData);
+            setCategories(catsData);
+        } catch (error) { console.error(error); }
+    };
+
+
+    // Componente para seleccionar iconos
+    const IconSelector = ({ selected, onSelect }: { selected: string, onSelect: (i: string) => void }) => {
+    const icons = ['Utensils', 'Bus', 'Home', 'Zap', 'Film', 'Heart', 'Book', 'ShoppingBag', 'Briefcase', 'Laptop', 'Gift', 'TrendingUp', 'Coffee', 'Car', 'Smartphone', 'Music', 'DollarSign', 'CreditCard', 'Smile'];
+    
+    return (
+        <div className="grid grid-cols-6 gap-2 mt-2 p-2 bg-slate-900 rounded-lg border border-slate-700 max-h-32 overflow-y-auto">
+        {icons.map(iconName => {
+            const Icon = (LucideIcons as any)[iconName] || LucideIcons.HelpCircle;
+            return (
+            <button key={iconName} onClick={() => onSelect(iconName)}
+                className={`p-2 rounded flex justify-center items-center ${selected === iconName ? 'bg-primary-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}>
+                <Icon size={18} />
+            </button>
+            )
+        })}
+        </div>
+    );
+    };
 
   // --- Auth Actions ---
   // (Login, Register, Verify2FA, Logout same as before, see bottom for brevity if unchanged logic is huge, but included for completeness)
@@ -332,32 +355,39 @@ function App() {
   };
 
   // --- Category Logic ---
-  const handleAddCategory = () => {
-      if(!newCategoryName.trim()) return;
-      if(newCategoryType === 'expense') {
-          const updated = [...expenseCategories, newCategoryName.trim()];
-          setExpenseCategories(updated);
-          StorageService.saveExpenseCategories(updated);
-      } else {
-          const updated = [...incomeCategories, newCategoryName.trim()];
-          setIncomeCategories(updated);
-          StorageService.saveIncomeCategories(updated);
-      }
-      setNewCategoryName('');
+  const handleAddCategory = async () => {
+// --- Estados Nuevos (Objetos en vez de strings) ---
+        const [categories, setCategories] = useState<Category[]>([]);
+        
+        // Filtramos en el frontend para mostrar en las listas separadas
+        const expenseCategories = categories.filter(c => c.type === 'expense');
+        const incomeCategories = categories.filter(c => c.type === 'income');
+
+        // Estado para el formulario de nueva categoría
+        const [newCategoryName, setNewCategoryName] = useState('');
+        const [newCategoryType, setNewCategoryType] = useState<'expense' | 'income'>('expense');
+        const [newCategoryIcon, setNewCategoryIcon] = useState('DollarSign'); // Icono por defecto
+    
+        if(!newCategoryName.trim()) return;
+        try {
+            const newCat = await StorageService.createCategory({
+                name: newCategoryName,
+                icon: newCategoryIcon,
+                type: newCategoryType
+            });
+            setCategories([...categories, newCat]); // Actualizamos estado local
+            setNewCategoryName('');
+            setNewCategoryIcon('DollarSign');
+        } catch (e) { alert("Error creando categoría"); }
   };
 
-  const handleDeleteCategory = (catName: string, type: 'expense' | 'income') => {
-      if(!confirm(`¿Eliminar la categoría "${catName}"?`)) return;
-      if(type === 'expense') {
-          const updated = expenseCategories.filter(c => c !== catName);
-          setExpenseCategories(updated);
-          StorageService.saveExpenseCategories(updated);
-      } else {
-          const updated = incomeCategories.filter(c => c !== catName);
-          setIncomeCategories(updated);
-          StorageService.saveIncomeCategories(updated);
-      }
-  };
+  const handleDeleteCategory = async (id: string) => {
+    if(!confirm(`¿Eliminar esta categoría?`)) return;
+    try {
+        await StorageService.deleteCategory(id);
+        setCategories(categories.filter(c => c.id !== id));
+    } catch (e) { alert("Error eliminando categoría"); }
+};
 
   // --- Derived Data (With Filters applied) ---
   const filteredTransactions = useMemo(() => {
@@ -952,40 +982,89 @@ function App() {
                     </div>
 
                     <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
-                        <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><Wallet size={20}/> Gestión de Categorías</h2>
-                        {/* Category management content remains the same */}
-                        <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700 mb-8">
-                            <h3 className="text-sm font-bold text-slate-300 mb-3">Agregar Nueva Categoría</h3>
-                            <div className="flex flex-col md:flex-row gap-3">
-                                <select 
-                                    value={newCategoryType}
-                                    onChange={(e) => setNewCategoryType(e.target.value as 'expense' | 'income')}
-                                    className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white"
-                                >
-                                    <option value="expense">Gastos</option>
-                                    <option value="income">Ingresos</option>
-                                </select>
-                                <input 
-                                    type="text" 
-                                    value={newCategoryName}
-                                    onChange={(e) => setNewCategoryName(e.target.value)}
-                                    placeholder="Ej: 🍕 Comida Rápida" 
-                                    className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white"
-                                />
-                                <button onClick={handleAddCategory} className="bg-primary-600 hover:bg-primary-500 text-white px-4 py-2 rounded-lg font-medium transition-colors">Agregar</button>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div>
-                                <h3 className="text-red-400 font-bold mb-3 border-b border-slate-700 pb-2">Categorías de Gastos</h3>
-                                <ul className="space-y-2">{expenseCategories.map(cat => (<li key={cat} className="flex justify-between items-center p-3 bg-slate-900 rounded-lg group"><span>{cat}</span><button onClick={() => handleDeleteCategory(cat, 'expense')} className="text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16} /></button></li>))}</ul>
-                            </div>
-                            <div>
-                                <h3 className="text-emerald-400 font-bold mb-3 border-b border-slate-700 pb-2">Categorías de Ingresos</h3>
-                                <ul className="space-y-2">{incomeCategories.map(cat => (<li key={cat} className="flex justify-between items-center p-3 bg-slate-900 rounded-lg group"><span>{cat}</span><button onClick={() => handleDeleteCategory(cat, 'income')} className="text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16} /></button></li>))}</ul>
-                            </div>
-                        </div>
-                    </div>
+    <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><Wallet size={20}/> Gestión de Categorías</h2>
+    
+                              {/* Formulario de Creación */}
+                              <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700 mb-8">
+                                  <h3 className="text-sm font-bold text-slate-300 mb-3">Agregar Nueva Categoría</h3>
+
+                                  <div className="flex flex-col gap-3">
+                                      <div className="flex gap-3">
+                                          <select
+                                              value={newCategoryType}
+                                              onChange={(e) => setNewCategoryType(e.target.value as 'expense' | 'income')}
+                                              className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                                          >
+                                              <option value="expense">Gastos</option>
+                                              <option value="income">Ingresos</option>
+                                          </select>
+                                          <input
+                                              type="text"
+                                              value={newCategoryName}
+                                              onChange={(e) => setNewCategoryName(e.target.value)}
+                                              placeholder="Ej: Comida Rápida"
+                                              className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                                          />
+                                      </div>
+
+                                      {/* Selector de Iconos */}
+                                      <div>
+                                          <p className="text-xs text-slate-400 mb-1">Selecciona un icono:</p>
+                                          <IconSelector selected={newCategoryIcon} onSelect={setNewCategoryIcon} />
+                                      </div>
+
+                                      <button onClick={handleAddCategory} className="bg-primary-600 hover:bg-primary-500 text-white px-4 py-2 rounded-lg font-medium transition-colors w-full md:w-auto self-end">
+                                          Guardar Categoría
+                                      </button>
+                                  </div>
+                              </div>
+
+                              {/* Listas de Categorías */}
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                  <div>
+                                      <h3 className="text-red-400 font-bold mb-3 border-b border-slate-700 pb-2">Categorías de Gastos</h3>
+                                      <ul className="space-y-2">
+                                          {expenseCategories.map(cat => {
+                                              const Icon = (LucideIcons as any)[cat.icon] || LucideIcons.Circle;
+                                              return (
+                                                  <li key={cat.id} className="flex justify-between items-center p-3 bg-slate-900 rounded-lg group">
+                                                      <div className="flex items-center gap-2">
+                                                          <span className="text-slate-500"><Icon size={16} /></span>
+                                                          <span>{cat.name}</span>
+                                                      </div>
+                                                      {!cat.isDefault && (
+                                                          <button onClick={() => handleDeleteCategory(cat.id)} className="text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                                                              <Trash2 size={16} />
+                                                          </button>
+                                                      )}
+                                                  </li>
+                                              )
+                                          })}
+                                      </ul>
+                                  </div>
+                                  <div>
+                                      <h3 className="text-emerald-400 font-bold mb-3 border-b border-slate-700 pb-2">Categorías de Ingresos</h3>
+                                      <ul className="space-y-2">
+                                          {incomeCategories.map(cat => {
+                                              const Icon = (LucideIcons as any)[cat.icon] || LucideIcons.Circle;
+                                              return (
+                                                  <li key={cat.id} className="flex justify-between items-center p-3 bg-slate-900 rounded-lg group">
+                                                      <div className="flex items-center gap-2">
+                                                          <span className="text-slate-500"><Icon size={16} /></span>
+                                                          <span>{cat.name}</span>
+                                                      </div>
+                                                      {!cat.isDefault && (
+                                                          <button onClick={() => handleDeleteCategory(cat.id)} className="text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                                                              <Trash2 size={16} />
+                                                          </button>
+                                                      )}
+                                                  </li>
+                                              )
+                                          })}
+                                      </ul>
+                                  </div>
+                              </div>
+                          </div>
                 </div>
             )}
 

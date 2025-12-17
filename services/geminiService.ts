@@ -2,7 +2,11 @@ import { GoogleGenAI } from "@google/genai";
 
 // NOTE: In a production Dokploy/N8n environment, this key would be injected securely.
 // For this demo, we assume process.env.API_KEY is available.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+if (!apiKey) console.error("Falta la API Key de Gemini");
+
+const ai = new GoogleGenAI(apiKey);
 
 interface AIResponse {
   amount: number;

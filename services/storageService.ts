@@ -1,4 +1,4 @@
-import { Transaction, UserProfile, SavingsGoal } from '../types';
+import { Transaction, UserProfile, SavingsGoal, Category } from '../types';
 import { INITIAL_SAVINGS, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from '../constants';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -171,33 +171,44 @@ export const StorageService = {
       }
   },
 
-  // --- Categories Management (LOCAL STORAGE) ---
-  // Mantenemos las categorías en LocalStorage porque el Backend no tiene tabla para ellas aún.
-  // Esto es aceptable para esta fase del proyecto.
+// --- Categories Management (API) ---
 
-  getExpenseCategories: (): string[] => {
+  // Obtener todas las categorías (Ingresos y Gastos juntos)
+  getCategories: async (): Promise<Category[]> => {
     try {
-      const data = localStorage.getItem(KEYS.CATEGORIES_EXPENSE);
-      return data ? JSON.parse(data) : DEFAULT_EXPENSE_CATEGORIES;
-    } catch {
-      return DEFAULT_EXPENSE_CATEGORIES;
+      const response = await fetch(`${API_URL}/categories`, { headers: getHeaders() });
+      return await handleResponse(response);
+    } catch (e) {
+      console.error("Error cargando categorías", e);
+      return [];
     }
   },
 
-  saveExpenseCategories: (categories: string[]) => {
-    localStorage.setItem(KEYS.CATEGORIES_EXPENSE, JSON.stringify(categories));
-  },
-
-  getIncomeCategories: (): string[] => {
+  // Crear nueva categoría
+  createCategory: async (category: { name: string, icon: string, type: 'income' | 'expense' }): Promise<Category> => {
     try {
-      const data = localStorage.getItem(KEYS.CATEGORIES_INCOME);
-      return data ? JSON.parse(data) : DEFAULT_INCOME_CATEGORIES;
-    } catch {
-      return DEFAULT_INCOME_CATEGORIES;
+      const response = await fetch(`${API_URL}/categories`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(category)
+      });
+      return await handleResponse(response);
+    } catch (e) {
+      console.error("Error creando categoría", e);
+      throw e;
     }
   },
 
-  saveIncomeCategories: (categories: string[]) => {
-    localStorage.setItem(KEYS.CATEGORIES_INCOME, JSON.stringify(categories));
+  // Eliminar categoría
+  deleteCategory: async (id: string): Promise<void> => {
+    try {
+      await fetch(`${API_URL}/categories/${id}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      });
+    } catch (e) {
+      console.error("Error eliminando categoría", e);
+      throw e;
+    }
   }
 };

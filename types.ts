@@ -43,3 +43,11 @@ export interface ChartDataPoint {
   income?: number;
   expense?: number;
 }
+
+export interface Category {
+  id: string; // o number, dependiendo de tu DB, pero el front suele manejarlo como string para inputs
+  name: string;
+  icon: string;
+  type: 'income' | 'expense';
+  isDefault?: boolean;
+}

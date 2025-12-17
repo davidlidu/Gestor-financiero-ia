@@ -74,6 +74,36 @@ const initDB = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    // Tabla Categorías
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS categories (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER REFERENCES users(id) ON DELETE CASCADE, 
+          name VARCHAR(100) NOT NULL,
+          icon VARCHAR(50),
+          type VARCHAR(20) CHECK (type IN ('income', 'expense')),
+          is_default BOOLEAN DEFAULT FALSE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      // Buscamos si ya hay categorías por defecto insertadas
+    const catCheck = await pool.query("SELECT count(*) FROM categories WHERE is_default = TRUE");
+    
+    if (parseInt(catCheck.rows[0].count) === 0) {
+      console.log("Insertando categorías por defecto...");
+      
+      const allDefaults = [...DEFAULT_EXPENSE_CATEGORIES, ...DEFAULT_INCOME_CATEGORIES];
+      
+      for (const cat of allDefaults) {
+        // user_id es NULL para categorías globales del sistema
+        await pool.query(
+          "INSERT INTO categories (name, icon, type, is_default) VALUES ($1, $2, $3, TRUE)",
+          [cat.name, cat.icon, cat.type]
+        );
+      }
+    }
     
     console.log("Base de datos inicializada correctamente.");
   } catch (err) {
@@ -404,6 +434,54 @@ app.put('/api/user/settings', authenticateToken, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// OBTENER CATEGORÍAS (Mezcla las por defecto + las del usuario)
+app.get('/api/categories', authenticateToken, async (req, res) => {
+    try {
+      const result = await pool.query(
+        `SELECT * FROM categories 
+         WHERE is_default = TRUE OR user_id = $1 
+         ORDER BY type, name`,
+        [req.user.id]
+      );
+      res.json(result.rows);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  
+  // CREAR CATEGORÍA PERSONALIZADA
+  app.post('/api/categories', authenticateToken, async (req, res) => {
+    try {
+      const { name, icon, type } = req.body;
+      const result = await pool.query(
+        "INSERT INTO categories (user_id, name, icon, type, is_default) VALUES ($1, $2, $3, $4, FALSE) RETURNING *",
+        [req.user.id, name, icon, type]
+      );
+      res.json(result.rows[0]);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+// Constantes por defecto
+const DEFAULT_EXPENSE_CATEGORIES = [
+    { name: 'Alimentación', icon: 'Utensils', type: 'expense' },
+    { name: 'Transporte', icon: 'Bus', type: 'expense' },
+    { name: 'Vivienda', icon: 'Home', type: 'expense' },
+    { name: 'Servicios', icon: 'Zap', type: 'expense' },
+    { name: 'Entretenimiento', icon: 'Film', type: 'expense' },
+    { name: 'Salud', icon: 'Heart', type: 'expense' },
+    { name: 'Educación', icon: 'Book', type: 'expense' },
+    { name: 'Ropa', icon: 'ShoppingBag', type: 'expense' }
+  ];
+  
+  const DEFAULT_INCOME_CATEGORIES = [
+    { name: 'Salario', icon: 'Briefcase', type: 'income' },
+    { name: 'Freelance', icon: 'Laptop', type: 'income' },
+    { name: 'Regalos', icon: 'Gift', type: 'income' },
+    { name: 'Inversiones', icon: 'TrendingUp', type: 'income' }
+  ];
 
 // --- START SERVER ---
 const PORT = process.env.PORT || 4000;
