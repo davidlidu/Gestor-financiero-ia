@@ -7,8 +7,8 @@ COPY . .
 
 # --- CAMBIO IMPORTANTE AQUÍ ---
 # Recibimos la variable con el nombre EXACTO que busca tu vite.config.ts
-ARG GEMINI_API_KEY
-ENV GEMINI_API_KEY=$GEMINI_API_KEY
+ARG VITE_GEMINI_API_KEY
+ENV VITE_GEMINI_API_KEY=$VITE_GEMINI_API_KEY
 # ------------------------------
 
 RUN npm run build

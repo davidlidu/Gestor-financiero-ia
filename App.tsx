@@ -444,9 +444,9 @@ function App() {
   
           <div className="w-full max-w-md bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 z-10">
             <div className="text-center mb-8">
-              <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-blue-500 mb-2">Lidutech Finanzas</h1>
+              <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-blue-500 mb-2">Gestor de Finanzas AI</h1>
               <p className="text-slate-400">
-                {authView.view === 'login' && 'Bienvenido de nuevo'}
+                {authView.view === 'login' && 'Bienvenid@'}
                 {authView.view === 'register' && 'Crea tu cuenta segura'}
                 {authView.view === 'verify_2fa' && 'Verificación de Seguridad'}
               </p>
@@ -492,7 +492,7 @@ function App() {
                   <ShieldCheck size={48} className="text-primary-500 mx-auto mb-2" />
                   <p className="text-sm text-slate-300">Código enviado a:</p>
                   <p className="text-white font-medium mb-3">{authView.email}</p>
-                  <div className="bg-primary-500/20 border border-primary-500/50 rounded px-2 py-1 inline-block"><p className="text-xs text-primary-300">Código de prueba: <b>123456</b></p></div>
+                  
                 </div>
                 <div><label className="block text-xs font-medium text-slate-400 mb-1 text-center">Ingresa el código</label><input type="text" required maxLength={6} value={otpInput} onChange={e => setOtpInput(e.target.value.replace(/\D/g,''))} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-center text-2xl tracking-[0.5em] text-white focus:ring-2 focus:ring-primary-500 outline-none font-mono" placeholder="000000" /></div>
                 <div className="flex items-center gap-2 py-2"><input type="checkbox" id="rememberDevice" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} className="w-4 h-4 rounded border-slate-600 text-primary-600 focus:ring-primary-500 bg-slate-900" /><label htmlFor="rememberDevice" className="text-sm text-slate-400 cursor-pointer">No pedir código en este dispositivo</label></div>
@@ -514,7 +514,7 @@ function App() {
         <div className="h-full flex flex-col">
             <div className="p-6 border-b border-slate-700 flex items-center gap-3">
                 <div className="w-8 h-8 rounded bg-gradient-to-br from-primary-500 to-blue-600"></div>
-                <h1 className="font-bold text-xl tracking-tight">Lidutech</h1>
+                <h1 className="font-bold text-xl tracking-tight">Mis Finanzas AI</h1>
             </div>
             
             <nav className="flex-1 p-4 space-y-2">
