@@ -73,11 +73,20 @@ function App() {
     setAuthLoading(false);
   };
 
-  const loadUserData = () => {
-    setTransactions(StorageService.getTransactions());
-    setSavings(StorageService.getSavings());
-    setExpenseCategories(StorageService.getExpenseCategories());
-    setIncomeCategories(StorageService.getIncomeCategories());
+  const loadUserData = async () => {
+    try {
+      const txs = await StorageService.getTransactions();
+      setTransactions(txs);
+      
+      const svg = await StorageService.getSavings();
+      setSavings(svg);
+      
+      // Categorías siguen siendo síncronas (LocalStorage)
+      setExpenseCategories(StorageService.getExpenseCategories());
+      setIncomeCategories(StorageService.getIncomeCategories());
+    } catch (error) {
+      console.error("Error cargando datos", error);
+    }
   };
 
   // --- Auth Actions ---
@@ -120,21 +129,36 @@ function App() {
       const userProfile = await AuthService.verify2FA(authView.tempToken, otpInput, rememberMe);
       if (userProfile) {
         setUser(userProfile);
-        loadUserData();
+        
+        // 1. Usamos 'await' porque getTransactions va al servidor
+        const existingTx = await StorageService.getTransactions(); 
+        
+        // Si no hay transacciones, verificamos si hay ahorros y si no, inicializamos
+        if (existingTx.length === 0) {
+           const currentSavings = await StorageService.getSavings();
+           // Si el backend devuelve array vacío, cargamos los defaults uno por uno
+           if (currentSavings.length === 0) {
+               // Iteramos y guardamos cada meta inicial en la base de datos
+               for (const goal of INITIAL_SAVINGS) {
+                   await StorageService.saveSavingsGoal({ ...goal, userId: userProfile.id });
+               }
+           }
+           // Volvemos a pedir los ahorros ya guardados
+           setSavings(await StorageService.getSavings());
+        } else {
+            // Carga normal
+            await loadUserData();
+        }
+        
         setSettingsN8nUrl(userProfile.n8nUrl || '');
         setSettingsAvatar(userProfile.avatar || '');
-        const existingTx = StorageService.getTransactions();
-        if (existingTx.length === 0) {
-           StorageService.updateSavings(INITIAL_SAVINGS);
-           setSavings(INITIAL_SAVINGS);
-        }
       }
     } catch (error: any) {
       alert(error.message);
     } finally {
       setAuthLoading(false);
     }
-  };
+};
 
   const handleLogout = () => {
     AuthService.logout();
@@ -149,51 +173,63 @@ function App() {
   const switchToLogin = () => { setAuthView({ view: 'login', email: '' }); setPasswordInput(''); };
 
   // --- Transaction Logic ---
-  const handleSaveTransaction = (data: any) => {
-    if (editingTransaction) {
-      const updatedTx = { ...editingTransaction, ...data };
-      const updatedList = StorageService.updateTransaction(updatedTx);
-      setTransactions(updatedList);
-    } else {
-      const newTx: Transaction = { ...data, id: Date.now().toString(), userId: user?.id };
-      const updatedList = StorageService.saveTransaction(newTx);
-      setTransactions(updatedList);
+  const handleSaveTransaction = async (data: any) => {
+    try {
+        let updatedList;
+        if (editingTransaction) {
+            const updatedTx = { ...editingTransaction, ...data };
+            updatedList = await StorageService.updateTransaction(updatedTx);
+        } else {
+            // Aseguramos que el ID lo genere el backend, no enviamos ID manual si es nuevo
+            const newTx: Transaction = { ...data, userId: user?.id };
+            if (newTx.id) delete newTx.id; // Dejamos que el backend ponga el ID
+            updatedList = await StorageService.saveTransaction(newTx);
+        }
+        setTransactions(updatedList);
+        setEditingTransaction(null);
+    } catch (e) {
+        alert("Error guardando movimiento");
     }
-    setEditingTransaction(null);
-  };
+};
 
   const handleEditTransaction = (t: Transaction) => { setEditingTransaction(t); setIsTransactionModalOpen(true); };
   
-  const handleDeleteTransaction = (id: string) => {
+  const handleDeleteTransaction = async (id: string) => {
     if(confirm('¿Estás seguro de eliminar este movimiento?')) {
-        const updated = StorageService.deleteTransaction(id);
+        const updated = await StorageService.deleteTransaction(id);
         setTransactions(updated);
     }
-  };
+};
 
   // --- Savings & Transfer Logic ---
-  const handleSaveSavings = (data: any) => {
-    if (editingSavings) {
-        const updated = { ...editingSavings, ...data };
-        const updatedList = StorageService.saveSavingsGoal(updated);
+  const handleSaveSavings = async (data: any) => {
+    try {
+        let updatedList;
+        if (editingSavings) {
+            const updated = { ...editingSavings, ...data };
+            updatedList = await StorageService.saveSavingsGoal(updated);
+        } else {
+            const newGoal: SavingsGoal = { ...data, userId: user?.id };
+            // Eliminamos ID temporal si existe, el backend crea el suyo
+            if (newGoal.id && newGoal.id.length > 10) delete newGoal.id; 
+            updatedList = await StorageService.saveSavingsGoal(newGoal);
+        }
         setSavings(updatedList);
-    } else {
-        const newGoal: SavingsGoal = { ...data, id: Date.now().toString(), userId: user?.id };
-        const updatedList = StorageService.saveSavingsGoal(newGoal);
-        setSavings(updatedList);
+        setEditingSavings(null);
+    } catch (e) {
+        alert("Error guardando meta de ahorro");
     }
-    setEditingSavings(null);
-  };
+};
 
   const handleEditSavings = (goal: SavingsGoal) => { setEditingSavings(goal); setIsSavingsModalOpen(true); };
 
-  const handleDeleteSavings = (id: string, e: React.MouseEvent) => {
-      e.stopPropagation();
-      if(confirm('¿Estás seguro de eliminar esta meta de ahorro?')) {
-        const updated = StorageService.deleteSavingsGoal(id);
-        setSavings(updated);
-      }
-  };
+  const handleDeleteSavings = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if(confirm('¿Estás seguro de eliminar esta meta de ahorro?')) {
+      const updated = await StorageService.deleteSavingsGoal(id);
+      setSavings(updated);
+    }
+};
 
   const handleTransferToSavings = (goalId: string, amount: number) => {
     // 1. Create an Expense Transaction
@@ -482,13 +518,13 @@ function App() {
             </div>
             
             <nav className="flex-1 p-4 space-y-2">
-                <button onClick={() => { setView('dashboard'); setIsMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'dashboard' ? 'bg-primary-600/10 text-primary-400 border border-primary-500/20' : 'text-slate-400 hover:bg-slate-800'}`}>
+                <button onClick={() => { setView('dashboard'); setIsMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'dashboard' ? 'bg-primary-600/10 text-primary-400 border border-primary-500/20' : 'text-slate-400 hover:bg-slate-800border border-transparent'}`}>
                     <LayoutDashboard size={20} /> Dashboard
                 </button>
-                <button onClick={() => { setView('transactions'); setIsMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'transactions' ? 'bg-primary-600/10 text-primary-400 border border-primary-500/20' : 'text-slate-400 hover:bg-slate-800'}`}>
+                <button onClick={() => { setView('transactions'); setIsMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'transactions' ? 'bg-primary-600/10 text-primary-400 border border-primary-500/20' : 'text-slate-400 hover:bg-slate-800border border-transparent'}`}>
                     <Wallet size={20} /> Movimientos
                 </button>
-                <button onClick={() => { setView('savings'); setIsMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'savings' ? 'bg-primary-600/10 text-primary-400 border border-primary-500/20' : 'text-slate-400 hover:bg-slate-800'}`}>
+                <button onClick={() => { setView('savings'); setIsMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'savings' ? 'bg-primary-600/10 text-primary-400 border border-primary-500/20' : 'text-slate-400 hover:bg-slate-800border border-transparent'}`}>
                     <PieChart size={20} /> Ahorros
                 </button>
             </nav>
