@@ -247,12 +247,16 @@ function App() {
 
     const handleDeleteSavings = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        if (confirm('¿Estás seguro de eliminar esta meta de ahorro?')) {
-            const updated = await StorageService.deleteSavingsGoal(id);
-            setSavings(updated);
+        if(confirm('¿Estás seguro de eliminar esta meta de ahorro?')) {
+          try {
+            await StorageService.deleteSavingsGoal(id);
+            // Filtramos manualmente porque la API no devuelve la lista nueva
+            setSavings(prevSavings => prevSavings.filter(s => s.id !== id));
+          } catch (e) {
+            alert("Error al eliminar la meta");
+          }
         }
-    };
-
+      };
     const handleTransferToSavings = (goalId: string, amount: number) => {
         // 1. Create an Expense Transaction
         const goal = savings.find(s => s.id === goalId);

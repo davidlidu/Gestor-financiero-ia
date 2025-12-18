@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, Mic, Upload, X, Loader2, Check, Banknote, ArrowRightLeft } from 'lucide-react';
-import { Transaction, TransactionType } from '../types';
+import { Transaction, TransactionType, Category } from '../types'; // Asegúrate de importar Category
 import { GeminiService } from '../services/geminiService';
 
 interface Props {
@@ -8,8 +8,8 @@ interface Props {
   onClose: () => void;
   onSave: (data: any) => void;
   initialData?: Transaction | null;
-  expenseCategories: string[];
-  incomeCategories: string[];
+  expenseCategories: Category[]; // <--- CAMBIO: Ahora recibe objetos Category
+  incomeCategories: Category[];  // <--- CAMBIO: Ahora recibe objetos Category
 }
 
 export const TransactionModal: React.FC<Props> = ({ 
@@ -38,9 +38,14 @@ export const TransactionModal: React.FC<Props> = ({
 
   // Update default category when type changes or categories load
   useEffect(() => {
-    if (!category || (type === 'expense' && !expenseCategories.includes(category) && !incomeCategories.includes(category))) {
-        if (type === 'expense' && expenseCategories.length > 0) setCategory(expenseCategories[0]);
-        if (type === 'income' && incomeCategories.length > 0) setCategory(incomeCategories[0]);
+    // Verificamos si la categoría actual existe en la lista de objetos por su nombre
+    const currentList = type === 'expense' ? expenseCategories : incomeCategories;
+    const exists = currentList.some(c => c.name === category);
+
+    if (!category || !exists) {
+        if (currentList.length > 0) {
+            setCategory(currentList[0].name); // Usamos .name
+        }
     }
   }, [type, expenseCategories, incomeCategories, category]);
 
@@ -59,7 +64,8 @@ export const TransactionModal: React.FC<Props> = ({
         setAmount('');
         setDescription('');
         setType('expense');
-        setCategory(expenseCategories[0] || '');
+        // Seleccionamos el nombre de la primera categoría disponible
+        setCategory(expenseCategories[0]?.name || '');
         setDate(new Date().toISOString().split('T')[0]);
         setPaymentMethod('transfer');
         setActiveTab('manual');
@@ -71,8 +77,8 @@ export const TransactionModal: React.FC<Props> = ({
   const handleSave = () => {
     onSave({
       amount: parseFloat(amount),
-      description: description || 'Sin descripción', // Default text if empty
-      category,
+      description: description || 'Sin descripción',
+      category, // Enviamos el nombre (string)
       type,
       date,
       paymentMethod,
@@ -97,13 +103,15 @@ export const TransactionModal: React.FC<Props> = ({
         if (result.amount) setAmount(result.amount.toString());
         if (result.description) setDescription(result.description);
         if (result.category) {
-            // Try to match returned category with existing ones, or default to first
-            const match = expenseCategories.find(c => c.includes(result.category));
-            setCategory(match || expenseCategories[0]);
+            // Buscamos coincidencia en los objetos por nombre
+            const match = expenseCategories.find(c => 
+                c.name.toLowerCase().includes(result.category.toLowerCase())
+            );
+            setCategory(match ? match.name : (expenseCategories[0]?.name || ''));
         }
         if (result.date) setDate(result.date);
-        setType('expense'); // Receipts are usually expenses
-        setActiveTab('manual'); // Switch to review
+        setType('expense');
+        setActiveTab('manual');
       } catch (err) {
         alert("Error al procesar la imagen. Intenta de nuevo.");
       } finally {
@@ -128,23 +136,22 @@ export const TransactionModal: React.FC<Props> = ({
         setLoading(true);
         const blob = new Blob(chunksRef.current, { type: 'audio/mp3' }); 
         
-        // Convert Blob to Base64
         const reader = new FileReader();
         reader.readAsDataURL(blob);
         reader.onloadend = async () => {
              const base64 = reader.result as string;
              try {
                 const result = await GeminiService.processVoiceNote(base64);
-                 // Auto-fill form
+                
                 if (result.amount) setAmount(result.amount.toString());
                 if (result.description) setDescription(result.description);
                 if (result.category) {
                      const list = result.type === 'income' ? incomeCategories : expenseCategories;
-                     const match = list.find(c => c.includes(result.category));
-                     setCategory(match || list[0]);
+                     const match = list.find(c => c.name.toLowerCase().includes(result.category.toLowerCase()));
+                     setCategory(match ? match.name : (list[0]?.name || ''));
                 }
                 if (result.type) setType(result.type as TransactionType);
-                setActiveTab('manual'); // Switch to review
+                setActiveTab('manual');
              } catch (e) {
                 alert("No se entendió el audio.");
              } finally {
@@ -164,7 +171,6 @@ export const TransactionModal: React.FC<Props> = ({
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
-      // Stop all tracks
       mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
     }
   };
@@ -278,8 +284,9 @@ export const TransactionModal: React.FC<Props> = ({
                       onChange={e => setCategory(e.target.value)}
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-primary-500"
                     >
+                      {/* --- CORRECCIÓN CLAVE: Iteramos sobre los objetos y usamos c.name --- */}
                       {(type === 'expense' ? expenseCategories : incomeCategories).map(c => (
-                        <option key={c} value={c}>{c}</option>
+                        <option key={c.id} value={c.name}>{c.name}</option>
                       ))}
                     </select>
                   </div>

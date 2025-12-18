@@ -464,6 +464,25 @@ app.get('/api/categories', authenticateToken, async (req, res) => {
     }
   });
 
+  // Eliminar categoría
+app.delete('/api/categories/:id', authenticateToken, async (req, res) => {
+    try {
+      // Solo permitimos borrar si pertenece al usuario (no las default)
+      const result = await pool.query(
+        'DELETE FROM categories WHERE id = $1 AND user_id = $2 RETURNING id', 
+        [req.params.id, req.user.id]
+      );
+      
+      if (result.rowCount === 0) {
+        return res.status(404).json({ message: "Categoría no encontrada o no tienes permiso" });
+      }
+      
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
 // Constantes por defecto
 const DEFAULT_EXPENSE_CATEGORIES = [
     { name: 'Alimentación', icon: 'Utensils', type: 'expense' },
