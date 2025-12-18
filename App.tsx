@@ -246,17 +246,21 @@ function App() {
     const handleEditSavings = (goal: SavingsGoal) => { setEditingSavings(goal); setIsSavingsModalOpen(true); };
 
     const handleDeleteSavings = async (id: string, e: React.MouseEvent) => {
-        e.stopPropagation();
+        // Evita que el click llegue a elementos padre o extensiones
+        e.preventDefault();
+        e.stopPropagation(); 
+        
         if(confirm('¿Estás seguro de eliminar esta meta de ahorro?')) {
           try {
             await StorageService.deleteSavingsGoal(id);
-            // Filtramos manualmente porque la API no devuelve la lista nueva
-            setSavings(prevSavings => prevSavings.filter(s => s.id !== id));
-          } catch (e) {
+            setSavings(prev => prev.filter(s => s.id !== id));
+          } catch (error) {
+            console.error(error);
             alert("Error al eliminar la meta");
           }
         }
-      };
+    };
+
     const handleTransferToSavings = (goalId: string, amount: number) => {
         // 1. Create an Expense Transaction
         const goal = savings.find(s => s.id === goalId);
@@ -280,6 +284,8 @@ function App() {
             const updatedSavings = StorageService.saveSavingsGoal(updatedGoal);
             setSavings(updatedSavings);
         }
+        // Cerramos el modal
+        setIsTransferModalOpen(false);
     };
 
     // --- Export Logic ---
@@ -425,12 +431,13 @@ function App() {
         // -- Area Data (Logic corrected for specific type view) --
         // We create a map for dates. 
         const dailyMap = dataToUse.reduce((acc, t) => {
-            const dateKey = t.date;
-            if (!acc[dateKey]) acc[dateKey] = { income: 0, expense: 0, net: 0 };
-            if (t.type === 'income') acc[dateKey].income += t.amount;
-            else acc[dateKey].expense += t.amount;
-            acc[dateKey].net = acc[dateKey].income - acc[dateKey].expense;
-            return acc;
+                // CORRECCIÓN: Tomamos solo la parte de la fecha antes de la 'T'
+                const dateKey = t.date.split('T')[0]; 
+                if (!acc[dateKey]) acc[dateKey] = { income: 0, expense: 0, net: 0 };
+                if (t.type === 'income') acc[dateKey].income += t.amount;
+                else acc[dateKey].expense += t.amount;
+                acc[dateKey].net = acc[dateKey].income - acc[dateKey].expense;
+                return acc;
         }, {} as Record<string, { income: number, expense: number, net: number }>);
 
         const sortedDates = Object.keys(dailyMap).sort();
@@ -772,64 +779,89 @@ function App() {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-700/50">
-                                            {filteredTransactions.length === 0 && (
-                                                <tr>
-                                                    <td colSpan={4} className="px-6 py-8 text-center text-slate-500">
-                                                        No se encontraron movimientos.
-                                                    </td>
-                                                </tr>
-                                            )}
-                                            {filteredTransactions.map((t) => {
-                                                // 1. Buscamos el objeto categoría para obtener su icono
-                                                const categoryObj = categories.find(c => c.name === t.category);
-                                                // 2. Cargamos el componente del icono dinámicamente
-                                                const CatIcon = categoryObj ? (LucideIcons as any)[categoryObj.icon] : null;
+    {filteredTransactions.length === 0 && (
+        <tr>
+            <td colSpan={4} className="px-6 py-8 text-center text-slate-500">
+                No se encontraron movimientos.
+            </td>
+        </tr>
+    )}
+    {filteredTransactions.map((t) => {
+        // 1. Lógica segura para iconos
+        const categoryObj = categories.find(c => c.name === t.category);
+        // Si es "Ahorro" o no encuentra la categoría, usa PiggyBank (Ahorro) o HelpCircle
+        const IconToRender = categoryObj 
+            ? (LucideIcons as any)[categoryObj.icon] 
+            : (t.category === 'Ahorro' ? LucideIcons.PiggyBank : LucideIcons.HelpCircle);
+            
+        // 2. Formateo de Fecha (Ej: 18 DIC)
+        const dateObj = new Date(t.date);
+        // Corregimos zona horaria tomando la parte UTC o string directo
+        const day = dateObj.getDate() || parseInt(t.date.split('-')[2]);
+        const monthNames = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
+        const monthIndex = dateObj.getMonth(); 
+        const month = monthNames[monthIndex] || monthNames[parseInt(t.date.split('-')[1]) - 1];
 
-                                                return (
-                                                <tr key={t.id} className="hover:bg-slate-700/30 transition-colors">
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex flex-col">
-                                                            {/* ✅ AQUI MOSTRAMOS EL ICONO + NOMBRE */}
-                                                            <span className="text-white font-medium px-2 py-0.5 rounded-full bg-slate-800 border border-slate-600 w-fit flex items-center gap-1">
-                                                                {CatIcon && <CatIcon size={12} />}
-                                                                {t.category}
-                                                            </span>
-                                                            <span className="text-xs text-slate-500 mt-1">{t.date}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex flex-col gap-1">
-                                                            <span className="text-slate-200">{t.description}</span>
-                                                            <div className="flex gap-2 text-xs text-slate-500">
-                                                                <span>{t.method === 'ocr' ? '📸 Auto' : t.method === 'voice' ? '🎙️ Voz' : 'Manual'}</span>
-                                                                <span>&bull;</span>
-                                                                <span>{t.paymentMethod === 'cash' ? '💵 Efectivo' : '🏦 Transferencia'}</span>
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                    <td className={`px-6 py-4 text-right font-bold ${t.type === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>
-                                                        {t.type === 'income' ? '+' : '-'}${t.amount.toLocaleString()}
-                                                    </td>
-                                                    <td className="px-6 py-4 text-center flex justify-center gap-2">
-                                                        <button
-                                                            onClick={() => handleEditTransaction(t)}
-                                                            className="text-slate-500 hover:text-blue-400 transition-colors p-1"
-                                                            title="Editar"
-                                                        >
-                                                            <Pencil size={16} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleDeleteTransaction(t.id)}
-                                                            className="text-slate-500 hover:text-red-400 transition-colors p-1"
-                                                            title="Eliminar"
-                                                        >
-                                                            <Trash2 size={16} />
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                                );
-                                            })}
-                                        </tbody>
+        // 3. Detectar si es Ahorro para color AZUL
+        const isSavings = t.category === 'Ahorro';
+
+        return (
+        <tr key={t.id} className="hover:bg-slate-700/30 transition-colors">
+            <td className="px-6 py-4">
+                <div className="flex items-center gap-3">
+                    {/* Fecha en Grande a la Izquierda */}
+                    <div className="flex flex-col items-center justify-center bg-slate-800 p-2 rounded-lg border border-slate-700 min-w-[60px]">
+                        <span className="text-xl font-bold text-white leading-none">{day}</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">{month}</span>
+                    </div>
+
+                    {/* Categoría Debajo (Pequeña) e Icono */}
+                    <div className="flex flex-col">
+                        <span className={`text-sm font-medium flex items-center gap-1 ${isSavings ? 'text-blue-400' : 'text-slate-200'}`}>
+                            {t.description || 'Sin descripción'}
+                        </span>
+                        <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                            {IconToRender && <IconToRender size={12} />}
+                            {t.category}
+                        </span>
+                    </div>
+                </div>
+            </td>
+            
+            {/* Ocultamos descripción detallada aquí porque ya la pusimos arriba, o mostramos el método */}
+            <td className="px-6 py-4 hidden md:table-cell">
+                <div className="flex gap-2 text-xs text-slate-500">
+                    <span className="bg-slate-800 px-2 py-1 rounded">{t.method === 'ocr' ? '📸 Auto' : t.method === 'voice' ? '🎙️ Voz' : 'Manual'}</span>
+                    <span className="bg-slate-800 px-2 py-1 rounded">{t.paymentMethod === 'cash' ? '💵 Efectivo' : '🏦 Transf.'}</span>
+                </div>
+            </td>
+
+            <td className={`px-6 py-4 text-right font-bold text-lg ${
+                isSavings ? 'text-blue-400' : (t.type === 'income' ? 'text-emerald-400' : 'text-red-400')
+            }`}>
+                {t.type === 'income' ? '+' : '-'}${t.amount.toLocaleString()}
+            </td>
+
+            <td className="px-6 py-4 text-center">
+                <div className="flex justify-center gap-2">
+                    <button
+                        onClick={() => handleEditTransaction(t)}
+                        className="text-slate-500 hover:text-blue-400 p-2 hover:bg-slate-800 rounded-full transition-all"
+                    >
+                        <Pencil size={16} />
+                    </button>
+                    <button
+                        onClick={() => handleDeleteTransaction(t.id)}
+                        className="text-slate-500 hover:text-red-400 p-2 hover:bg-slate-800 rounded-full transition-all"
+                    >
+                        <Trash2 size={16} />
+                    </button>
+                </div>
+            </td>
+        </tr>
+        );
+    })}
+</tbody>
                                     </table>
                                 </div>
                             </div>
