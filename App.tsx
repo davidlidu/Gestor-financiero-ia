@@ -628,10 +628,16 @@ function App() {
                                 >
                                     <option value="">Todas las Categorías</option>
                                     <optgroup label="Gastos">
-                                        {expenseCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                                        {/* Usamos c.id y c.name */}
+                                        {expenseCategories.map(c => (
+                                            <option key={c.id} value={c.name}>{c.name}</option>
+                                        ))}
                                     </optgroup>
                                     <optgroup label="Ingresos">
-                                        {incomeCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                                        {/* Usamos c.id y c.name */}
+                                        {incomeCategories.map(c => (
+                                            <option key={c.id} value={c.name}>{c.name}</option>
+                                        ))}
                                     </optgroup>
                                 </select>
                             </div>
@@ -769,11 +775,21 @@ function App() {
                                                     </td>
                                                 </tr>
                                             )}
-                                            {filteredTransactions.map((t) => (
+                                            {filteredTransactions.map((t) => {
+                                                // 1. Buscamos el objeto categoría para obtener su icono
+                                                const categoryObj = categories.find(c => c.name === t.category);
+                                                // 2. Cargamos el componente del icono dinámicamente
+                                                const CatIcon = categoryObj ? (LucideIcons as any)[categoryObj.icon] : null;
+
+                                                return (
                                                 <tr key={t.id} className="hover:bg-slate-700/30 transition-colors">
                                                     <td className="px-6 py-4">
                                                         <div className="flex flex-col">
-                                                            <span className="text-white font-medium px-2 py-0.5 rounded-full bg-slate-800 border border-slate-600 w-fit">{t.category}</span>
+                                                            {/* ✅ AQUI MOSTRAMOS EL ICONO + NOMBRE */}
+                                                            <span className="text-white font-medium px-2 py-0.5 rounded-full bg-slate-800 border border-slate-600 w-fit flex items-center gap-1">
+                                                                {CatIcon && <CatIcon size={12} />}
+                                                                {t.category}
+                                                            </span>
                                                             <span className="text-xs text-slate-500 mt-1">{t.date}</span>
                                                         </div>
                                                     </td>
@@ -807,7 +823,8 @@ function App() {
                                                         </button>
                                                     </td>
                                                 </tr>
-                                            ))}
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                 </div>

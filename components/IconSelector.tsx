@@ -3,10 +3,17 @@ import * as LucideIcons from 'lucide-react';
 
 // Lista curada de nombres de iconos útiles para finanzas
 const AVAILABLE_ICONS = [
-  'Utensils', 'Bus', 'Home', 'Zap', 'Film', 'Heart', 'Book', 'ShoppingBag', 
-  'Briefcase', 'Laptop', 'Gift', 'TrendingUp', 'Coffee', 'Car', 'Plane', 
-  'Smartphone', 'Wifi', 'Dumbbell', 'Scissors', 'Stethoscope', 'Baby', 'Dog',
-  'Music', 'Gamepad', 'Hammer', 'Wrench', 'Palette', 'DollarSign', 'CreditCard'
+  // Básicos
+  'Wallet', 'Banknote', 'CreditCard', 'DollarSign', 'Coins', 'PiggyBank', 'Safe',
+  // Categorías Comunes
+  'Utensils', 'Coffee', 'Beer', 'Pizza', 'ShoppingBag', 'ShoppingCart', 'Shirt', 'Watch',
+  'Bus', 'Car', 'Fuel', 'Plane', 'Train', 'Bike', 'Map',
+  'Home', 'Bed', 'Bath', 'Sofa', 'Zap', 'Droplet', 'Wifi', 'Phone',
+  'Stethoscope', 'Pill', 'Activity', 'Heart', 'Baby', 'Dog', 'Cat',
+  'GraduationCap', 'Book', 'Pencil', 'Briefcase', 'Laptop', 'Monitor', 'Printer',
+  'Film', 'Music', 'Gamepad', 'Ticket', 'Camera', 'Headphones', 'Tv',
+  'Gift', 'PartyPopper', 'Cake', 'Flower', 'Palmtree', 'Umbrella',
+  'Hammer', 'Wrench', 'Scissors', 'Trash2', 'Shield', 'Lock', 'Key'
 ];
 
 interface IconSelectorProps {
