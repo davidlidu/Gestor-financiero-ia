@@ -22,6 +22,7 @@ export const TransactionModal: React.FC<Props> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'manual' | 'ocr' | 'voice'>('manual');
   const [loading, setLoading] = useState(false);
+  const [displayAmount, setDisplayAmount] = useState('');
   
   // Form State
   const [amount, setAmount] = useState('');
@@ -36,6 +37,19 @@ export const TransactionModal: React.FC<Props> = ({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
+  // 1. Función auxiliar fuera del componente o al inicio
+  const formatCurrency = (value: string) => {
+    // Eliminar todo lo que no sea número
+    const number = value.replace(/\D/g, '');
+    if (!number) return '';
+    // Formatear con puntos de mil
+    return new Intl.NumberFormat('es-CO').format(parseInt(number));
+  };
+
+  const parseCurrency = (displayValue: string) => {
+    return parseFloat(displayValue.replace(/\./g, ''));
+};
+
   // Update default category when type changes or categories load
   useEffect(() => {
     // Verificamos si la categoría actual existe en la lista de objetos por su nombre
@@ -48,11 +62,13 @@ export const TransactionModal: React.FC<Props> = ({
         }
     }
   }, [type, expenseCategories, incomeCategories, category]);
+  
 
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
         setAmount(initialData.amount.toString());
+        setDisplayAmount(formatCurrency(initialData.amount.toString()));
         setDescription(initialData.description);
         setCategory(initialData.category);
         setType(initialData.type);
@@ -62,6 +78,7 @@ export const TransactionModal: React.FC<Props> = ({
       } else {
         // Reset form for new entry
         setAmount('');
+        setDisplayAmount('');
         setDescription('');
         setType('expense');
         // Seleccionamos el nombre de la primera categoría disponible
@@ -73,6 +90,25 @@ export const TransactionModal: React.FC<Props> = ({
       setLoading(false);
     }
   }, [isOpen, initialData, expenseCategories]);
+
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    // Permitir borrar todo
+    if (val === '') {
+        setDisplayAmount('');
+        setAmount('');
+        return;
+    }
+    
+    // Formatear visualmente
+    const formatted = formatCurrency(val);
+    setDisplayAmount(formatted);
+    
+    // Guardar valor numérico real para el backend
+    // Quitamos los puntos para obtener el numero limpio
+    const rawValue = val.replace(/\./g, '').replace(/,/g, ''); 
+    setAmount(rawValue);
+};
 
   const handleSave = () => {
     onSave({
@@ -258,12 +294,13 @@ export const TransactionModal: React.FC<Props> = ({
                         <div className="relative">
                             <span className="absolute left-3 top-2 text-slate-500">$</span>
                             <input 
-                                type="number" 
-                                value={amount} 
-                                onChange={e => setAmount(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-6 pr-3 py-2 text-white focus:outline-none focus:border-primary-500"
-                                placeholder="0.00"
-                            />
+    type="text" 
+    inputMode="numeric" // Abre teclado numérico en móviles
+    value={displayAmount} 
+    onChange={handleAmountChange}
+    className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-6 pr-3 py-2 text-white focus:outline-none focus:border-primary-500"
+    placeholder="0"
+/>
                         </div>
                     </div>
                     <div>

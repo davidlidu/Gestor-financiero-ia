@@ -843,7 +843,7 @@ function App() {
             <td className={`px-6 py-4 text-right font-bold text-lg ${
                 isSavings ? 'text-blue-400' : (t.type === 'income' ? 'text-emerald-400' : 'text-red-400')
             }`}>
-                {t.type === 'income' ? '+' : '-'}${t.amount.toLocaleString()}
+                {t.type === 'income' ? '+' : '-'}${t.amount.toLocaleString('es-CO')}
             </td>
 
             <td className="px-6 py-4 text-center">

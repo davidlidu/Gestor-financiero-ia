@@ -6,6 +6,8 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+
 const app = express();
 
 // --- MIDDLEWARES GLOBALES ---
@@ -501,6 +503,51 @@ const DEFAULT_EXPENSE_CATEGORIES = [
     { name: 'Regalos', icon: 'Gift', type: 'income' },
     { name: 'Inversiones', icon: 'TrendingUp', type: 'income' }
   ];
+
+
+  // RUTA PARA PROCESAR IA (Proxy Seguro)
+app.post('/api/ai/process', authenticateToken, async (req, res) => {
+    try {
+      const { type, base64Data } = req.body; // type: 'receipt' | 'voice'
+      
+      const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: "API Key de Gemini no configurada en el servidor" });
+  
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  
+      let prompt = "";
+      let mimeType = "";
+  
+      if (type === 'receipt') {
+          prompt = `Analiza esta imagen de un recibo. Extrae: amount (número), category (Hogar, Comida, Transporte, etc), description, date (YYYY-MM-DD), type ('expense'). Responde solo JSON válido sin markdown.`;
+          mimeType = "image/jpeg";
+      } else if (type === 'voice') {
+          prompt = `Escucha este audio financiero. Extrae: amount (número), category, description, date (YYYY-MM-DD), type ('income' o 'expense'). Responde solo JSON válido sin markdown.`;
+          mimeType = "audio/mp3"; // O el formato que envíes
+      }
+  
+      // Limpieza básica del base64 si trae cabeceras
+      const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+  
+      const result = await model.generateContent([
+          prompt,
+          { inlineData: { data: cleanBase64, mimeType: mimeType } }
+      ]);
+  
+      const responseText = await result.response.text();
+      
+      // Limpieza del JSON que devuelve Gemini (a veces pone ```json ... ```)
+      const jsonStr = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+      const parsedData = JSON.parse(jsonStr);
+  
+      res.json(parsedData);
+  
+    } catch (err) {
+      console.error("Error en Gemini Backend:", err);
+      res.status(500).json({ error: "Error procesando IA: " + err.message });
+    }
+  });
 
 // --- START SERVER ---
 const PORT = process.env.PORT || 4000;
