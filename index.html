@@ -1,41 +1,74 @@
 <!DOCTYPE html>
 <html lang="es" class="dark">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Gestor Financiero AI</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            colors: {
-              slate: {
-                750: '#2d3748',
-                850: '#1a202c',
-                950: '#0f172a',
-              },
-              primary: {
-                500: '#10b981',
-                600: '#059669',
-              }
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Gestor Financiero AI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            slate: {
+              750: '#2d3748',
+              850: '#1a202c',
+              950: '#0f172a',
+            },
+            primary: {
+              500: '#10b981',
+              600: '#059669',
             }
           }
         }
       }
-    </script>
-    <style>
-      ::-webkit-scrollbar { width: 8px; height: 8px; }
-      ::-webkit-scrollbar-track { background: #1e293b; }
-      ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
-      ::-webkit-scrollbar-thumb:hover { background: #64748b; }
-    </style>
+    }
+  </script>
+  <style>
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #1e293b;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #64748b;
+    }
+
+    /* Invertir color del icono de calendario para que sea blanco en fondo oscuro */
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      filter: invert(1);
+      cursor: pointer;
+      opacity: 0.6;
+      transition: 0.2s;
+    }
+
+    input[type="date"]::-webkit-calendar-picker-indicator:hover {
+      opacity: 1;
+    }
+
+    /* Forzar que el texto del input date sea visible */
+    input[type="date"] {
+      color-scheme: dark;
+    }
+  </style>
 </head>
-  <body class="bg-slate-900 text-slate-100 antialiased selection:bg-primary-500 selection:text-white">
-    <div id="root"></div>
-    
-    <script type="module" src="/index.tsx"></script>
-    
-  </body>
+
+<body class="bg-slate-900 text-slate-100 antialiased selection:bg-primary-500 selection:text-white">
+  <div id="root"></div>
+
+  <script type="module" src="/index.tsx"></script>
+
+</body>
+
 </html>

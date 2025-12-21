@@ -10,6 +10,7 @@ import { TransferModal } from './components/TransferModal'; // Imported Transfer
 import { INITIAL_SAVINGS } from './constants';
 import { AVAILABLE_ICONS } from './components/IconSelector';
 import * as LucideIcons from 'lucide-react';
+import { ChevronDown, ChevronUp, History } from 'lucide-react';
 
 // Componente para seleccionar iconos
 const IconSelector = ({ selected, onSelect }: { selected: string, onSelect: (i: string) => void }) => {
@@ -91,6 +92,41 @@ function App() {
     const [settingsN8nUrl, setSettingsN8nUrl] = useState('');
     const [settingsAvatar, setSettingsAvatar] = useState('');
     const [settingsNewPassword, setSettingsNewPassword] = useState('');
+
+    const [showFilters, setShowFilters] = useState(false); // Colapsar filtros
+    const [touchStart, setTouchStart] = useState<number | null>(null);
+    const [touchEnd, setTouchEnd] = useState<number | null>(null);
+    
+    // Para historial de ahorros
+    const [selectedSavingsHistory, setSelectedSavingsHistory] = useState<SavingsGoal | null>(null);
+
+    // --- LÓGICA SWIPE (Deslizar para menú) ---
+    const minSwipeDistance = 50;
+    
+    const onTouchStart = (e: React.TouchEvent) => {
+        setTouchEnd(null);
+        setTouchStart(e.targetTouches[0].clientX);
+    };
+
+    const onTouchMove = (e: React.TouchEvent) => setTouchEnd(e.targetTouches[0].clientX);
+
+    const onTouchEnd = () => {
+        if (!touchStart || !touchEnd) return;
+        const distance = touchStart - touchEnd;
+        const isLeftSwipe = distance > minSwipeDistance;
+        const isRightSwipe = distance < -minSwipeDistance;
+
+        if (isRightSwipe) setIsMobileMenuOpen(true); // Abrir menú
+        if (isLeftSwipe) setIsMobileMenuOpen(false); // Cerrar menú
+    };
+
+    // --- HELPER: Historial de Ahorros ---
+    // Filtramos transacciones que sean de tipo "Ahorro" y mencionen la meta
+    const getSavingsHistory = (goalName: string) => {
+        return transactions
+            .filter(t => t.category === 'Ahorro' && t.description.includes(goalName))
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    };
 
     // --- Effects ---
     useEffect(() => {
@@ -609,7 +645,11 @@ function App() {
 
     // --- Main App Render ---
     return (
-        <div className="min-h-screen flex bg-slate-900 text-slate-100 font-sans overflow-x-hidden">
+        <div className="min-h-screen flex bg-slate-900 text-slate-100 font-sans overflow-x-hidden"
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        >
 
             {/* Sidebar (Desktop) */}
             <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-850 border-r border-slate-700 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -662,91 +702,97 @@ function App() {
                     <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-slate-300">
                         <Menu />
                     </button>
-                    <span className="font-bold">Lidutech Finanzas</span>
+                    <span className="font-bold">Finanzas IA</span>
                     <div className="w-8"></div>
                 </header>
 
                 <div className="p-4 lg:p-8 max-w-7xl mx-auto space-y-6 pb-24">
 
-                    {/* Filter Component Reusable (Optimizado Mobile) */}
+                    {/* Filter Component Reusable (Optimizado Mobile & Desktop) */}
                     {(view === 'dashboard' || view === 'transactions') && (
-                        <div className="bg-slate-800 rounded-xl p-4 border border-slate-700 flex flex-col gap-4 mb-6">
+                        <div className="bg-slate-800 rounded-xl border border-slate-700 mb-6 overflow-hidden">
 
-                            <div className="flex items-center gap-2 text-slate-400">
-                                <Filter size={18} />
-                                <span className="text-sm font-medium">Filtrar y Ordenar:</span>
+                            {/* Cabecera del Filtro (Click para abrir/cerrar en móvil) */}
+                            <div
+                                onClick={() => setShowFilters(!showFilters)}
+                                className="p-4 flex justify-between items-center cursor-pointer md:cursor-default"
+                            >
+                                <div className="flex items-center gap-2 text-slate-300">
+                                    <Filter size={18} />
+                                    <span className="text-sm font-bold">Filtrar y Ordenar</span>
+                                </div>
+                                {/* Icono Chevron solo visible en móvil */}
+                                <div className="md:hidden text-slate-500">
+                                    {showFilters ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                                </div>
                             </div>
 
-                            {/* Grid: 1 col (móvil), 2 cols (tablet), 5 cols (PC) */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 w-full">
-                                <input
-                                    type="date"
-                                    value={filterStartDate}
-                                    onChange={(e) => setFilterStartDate(e.target.value)}
-                                    className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-xs text-white w-full"
-                                    placeholder="Desde"
-                                />
-                                <input
-                                    type="date"
-                                    value={filterEndDate}
-                                    onChange={(e) => setFilterEndDate(e.target.value)}
-                                    className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-xs text-white w-full"
-                                    placeholder="Hasta"
-                                />
-                                <select
-                                    value={filterType}
-                                    onChange={(e) => setFilterType(e.target.value as 'all' | 'income' | 'expense')}
-                                    className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-xs text-white w-full"
-                                >
-                                    <option value="all">Todos los Tipos</option>
-                                    <option value="income">Ingresos</option>
-                                    <option value="expense">Gastos</option>
-                                </select>
-                                <select
-                                    value={filterCategory}
-                                    onChange={(e) => setFilterCategory(e.target.value)}
-                                    className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-xs text-white w-full"
-                                >
-                                    <option value="">Todas las Categorías</option>
-                                    <optgroup label="Gastos">
-                                        {expenseCategories.map(c => (
-                                            <option key={c.id} value={c.name}>{c.name}</option>
-                                        ))}
-                                    </optgroup>
-                                    <optgroup label="Ingresos">
-                                        {incomeCategories.map(c => (
-                                            <option key={c.id} value={c.name}>{c.name}</option>
-                                        ))}
-                                    </optgroup>
-                                </select>
+                            {/* Contenido Colapsable (Siempre visible en MD, toggle en Mobile) */}
+                            <div className={`px-4 pb-4 ${showFilters ? 'block' : 'hidden'} md:block`}>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 w-full">
 
-                                {/* NUEVO SELECTOR DE ORDEN */}
-                                <select
-                                    value={sortOrder}
-                                    onChange={(e) => setSortOrder(e.target.value as 'date' | 'amount_asc' | 'amount_desc')}
-                                    className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-xs text-white font-medium w-full"
-                                >
-                                    <option value="date">📅 Fecha (Reciente)</option>
-                                    <option value="amount_desc">💰 Mayor a Menor</option>
-                                    <option value="amount_asc">💰 Menor a Mayor</option>
-                                </select>
+                                    {/* INPUTS DE FECHA CORREGIDOS (Ancho fijo min y padding flecha) */}
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-3 text-slate-500 text-[10px] pointer-events-none">DESDE</span>
+                                        <input
+                                            type="date"
+                                            value={filterStartDate}
+                                            onChange={(e) => setFilterStartDate(e.target.value)}
+                                            className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 pb-2 pt-6 text-xs text-white min-h-[50px] focus:ring-1 focus:ring-primary-500"
+                                        />
+                                    </div>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-3 text-slate-500 text-[10px] pointer-events-none">HASTA</span>
+                                        <input
+                                            type="date"
+                                            value={filterEndDate}
+                                            onChange={(e) => setFilterEndDate(e.target.value)}
+                                            className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 pb-2 pt-6 text-xs text-white min-h-[50px] focus:ring-1 focus:ring-primary-500"
+                                        />
+                                    </div>
+
+                                    {/* SELECTS CORREGIDOS (Padding derecho para flecha) */}
+                                    <select
+                                        value={filterType}
+                                        onChange={(e) => setFilterType(e.target.value as any)}
+                                        className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-xs text-white w-full appearance-none pr-8"
+                                        style={{ backgroundImage: 'none' }} // Quitamos flecha nativa si molesta y usamos contenedor relativo o padding
+                                    >
+                                        <option value="all">Todos los Tipos</option>
+                                        <option value="income">Ingresos</option>
+                                        <option value="expense">Gastos</option>
+                                    </select>
+
+                                    <select
+                                        value={filterCategory}
+                                        onChange={(e) => setFilterCategory(e.target.value)}
+                                        className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-xs text-white w-full pr-8"
+                                    >
+                                        <option value="">Todas las Categorías</option>
+                                        <optgroup label="Gastos">{expenseCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</optgroup>
+                                        <optgroup label="Ingresos">{incomeCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</optgroup>
+                                    </select>
+
+                                    <select
+                                        value={sortOrder}
+                                        onChange={(e) => setSortOrder(e.target.value as any)}
+                                        className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-xs text-white font-medium w-full pr-8"
+                                    >
+                                        <option value="date">📅 Fecha (Reciente)</option>
+                                        <option value="amount_desc">💰 Mayor a Menor</option>
+                                        <option value="amount_asc">💰 Menor a Mayor</option>
+                                    </select>
+                                </div>
+
+                                {(filterStartDate || filterEndDate || filterCategory || filterType !== 'all' || sortOrder !== 'date') && (
+                                    <button
+                                        onClick={() => { setFilterStartDate(''); setFilterEndDate(''); setFilterCategory(''); setFilterType('all'); setSortOrder('date'); }}
+                                        className="mt-3 w-full sm:w-auto bg-slate-700/50 hover:bg-slate-700 text-xs text-slate-300 hover:text-white flex items-center justify-center gap-2 py-2 rounded-lg transition-colors border border-slate-600/50"
+                                    >
+                                        <X size={14} /> Limpiar Filtros
+                                    </button>
+                                )}
                             </div>
-
-                            {/* Botón Limpiar actualizado (Full width en móvil) */}
-                            {(filterStartDate || filterEndDate || filterCategory || filterType !== 'all' || sortOrder !== 'date') && (
-                                <button
-                                    onClick={() => {
-                                        setFilterStartDate('');
-                                        setFilterEndDate('');
-                                        setFilterCategory('');
-                                        setFilterType('all');
-                                        setSortOrder('date');
-                                    }}
-                                    className="w-full sm:w-auto bg-slate-700/50 hover:bg-slate-700 text-xs text-slate-300 hover:text-white flex items-center justify-center gap-2 py-2.5 rounded-lg transition-colors border border-slate-600/50"
-                                >
-                                    <X size={14} /> Limpiar Filtros
-                                </button>
-                            )}
                         </div>
                     )}
 
@@ -872,15 +918,16 @@ function App() {
                                     <span className="text-xs text-slate-500 bg-slate-900 px-2 py-1 rounded border border-slate-700">{filteredTransactions.length} registros</span>
                                 </div>
                                 <div className="overflow-x-auto">
-                                    <table className="w-full text-left text-sm text-slate-400">
-                                        <thead className="bg-slate-900/50 text-xs uppercase font-medium">
-                                            <tr>
-                                                <th className="px-6 py-4">Categoría / Fecha</th>
-                                                <th className="px-6 py-4">Descripción / Método</th>
-                                                <th className="px-6 py-4 text-right">Monto</th>
-                                                <th className="px-6 py-4 text-center">Acciones</th>
-                                            </tr>
-                                        </thead>
+                                <table className="w-full text-left text-sm text-slate-400">
+                                    {/* Cabecera oculta en móvil para ahorrar espacio y evitar desalineación */}
+                                    <thead className="bg-slate-900/50 text-xs uppercase font-medium hidden md:table-header-group">
+                                        <tr>
+                                            <th className="px-6 py-4">Categoría / Fecha</th>
+                                            <th className="px-6 py-4">Descripción / Método</th>
+                                            <th className="px-6 py-4 text-right">Monto</th>
+                                            <th className="px-6 py-4 text-center">Acciones</th>
+                                        </tr>
+                                    </thead>
                                         <tbody className="divide-y divide-slate-700/50">
                                             {filteredTransactions.length === 0 && (
                                                 <tr>
@@ -914,56 +961,58 @@ function App() {
                                                 // 3. Detectar si es Ahorro para color AZUL
                                                 const isSavings = t.category === 'Ahorro';
                                                 return (
-                                                    <tr key={t.id} className="hover:bg-slate-700/30 transition-colors">
-                                                        <td className="px-6 py-4">
-                                                            <div className="flex items-center gap-3">
-                                                                {/* Fecha en Grande a la Izquierda */}
-                                                                <div className="flex flex-col items-center justify-center bg-slate-800 p-2 rounded-lg border border-slate-700 min-w-[60px]">
-                                                                    <span className="text-xl font-bold text-white leading-none">{day}</span>
-                                                                    <span className="text-[10px] font-bold text-slate-400 uppercase">{month}</span>
+                                                    <tr 
+                                                        key={t.id} 
+                                                        onClick={() => handleEditTransaction(t)} // CLICK EN TODA LA FILA PARA EDITAR
+                                                        className="hover:bg-slate-700/30 transition-colors cursor-pointer group relative"
+                                                    >
+                                                        {/* CELDA ÚNICA EN MÓVIL (Usamos Block layout) */}
+                                                        <td className="p-4 md:px-6 md:py-4 block md:table-cell">
+                                                            <div className="flex items-center justify-between md:justify-start gap-3">
+                                                                <div className="flex items-center gap-3">
+                                                                    {/* Fecha */}
+                                                                    <div className="flex flex-col items-center justify-center bg-slate-800 p-2 rounded-lg border border-slate-700 min-w-[50px] h-[50px]">
+                                                                        <span className="text-lg font-bold text-white leading-none">{dayStr}</span>
+                                                                        <span className="text-[10px] font-bold text-slate-400 uppercase">{monthNames[parseInt(monthStr)-1]}</span>
+                                                                    </div>
+                                                                    {/* Info Principal */}
+                                                                    <div className="flex flex-col">
+                                                                        <span className={`text-sm font-medium ${t.category === 'Ahorro' ? 'text-blue-400' : 'text-slate-200'}`}>
+                                                                            {t.description || t.category}
+                                                                        </span>
+                                                                        <span className="text-xs text-slate-500 flex items-center gap-1">
+                                                                            {t.category} • {t.paymentMethod === 'cash' ? 'Efectivo' : 'Banco'}
+                                                                        </span>
+                                                                    </div>
                                                                 </div>
-
-                                                                {/* Categoría Debajo (Pequeña) e Icono */}
-                                                                <div className="flex flex-col">
-                                                                    <span className={`text-sm font-medium flex items-center gap-1 ${isSavings ? 'text-blue-400' : 'text-slate-200'}`}>
-                                                                        {t.description || 'Sin descripción'}
-                                                                    </span>
-                                                                    <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                                                                        {IconToRender && <IconToRender size={12} />}
-                                                                        {t.category}
+    
+                                                                {/* EN MÓVIL: El monto va a la derecha en la misma línea visual */}
+                                                                <div className="md:hidden text-right">
+                                                                    <span className={`block font-bold text-base ${t.category === 'Ahorro' ? 'text-blue-400' : (t.type === 'income' ? 'text-emerald-400' : 'text-red-400')}`}>
+                                                                         {t.type === 'income' ? '+' : '-'}${formatMoney(t.amount)}
                                                                     </span>
                                                                 </div>
                                                             </div>
                                                         </td>
-
-                                                        {/* Ocultamos descripción detallada aquí porque ya la pusimos arriba, o mostramos el método */}
+                                                        
+                                                        {/* Columnas ocultas en móvil */}
                                                         <td className="px-6 py-4 hidden md:table-cell">
                                                             <div className="flex gap-2 text-xs text-slate-500">
-                                                                <span className="bg-slate-800 px-2 py-1 rounded">{t.method === 'ocr' ? '📸 Auto' : t.method === 'voice' ? '🎙️ Voz' : 'Manual'}</span>
-                                                                <span className="bg-slate-800 px-2 py-1 rounded">{t.paymentMethod === 'cash' ? '💵 Efectivo' : '🏦 Transf.'}</span>
+                                                                <span className="bg-slate-800 px-2 py-1 rounded">{t.method === 'ocr' ? 'Auto' : 'Manual'}</span>
                                                             </div>
                                                         </td>
-
-                                                        <td className={`px-6 py-4 text-right font-bold text-lg ${isSavings ? 'text-blue-400' : (t.type === 'income' ? 'text-emerald-400' : 'text-red-400')
-                                                            }`}>
-                                                            {t.type === 'income' ? '+' : '-'}${t.amount.toLocaleString('es-CO')}
+    
+                                                        <td className={`px-6 py-4 text-right font-bold text-lg hidden md:table-cell ${t.type === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                            {t.type === 'income' ? '+' : '-'}${formatMoney(t.amount)}
                                                         </td>
-
-                                                        <td className="px-6 py-4 text-center">
-                                                            <div className="flex justify-center gap-2">
-                                                                <button
-                                                                    onClick={() => handleEditTransaction(t)}
-                                                                    className="text-slate-500 hover:text-blue-400 p-2 hover:bg-slate-800 rounded-full transition-all"
-                                                                >
-                                                                    <Pencil size={16} />
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handleDeleteTransaction(t.id)}
-                                                                    className="text-slate-500 hover:text-red-400 p-2 hover:bg-slate-800 rounded-full transition-all"
-                                                                >
-                                                                    <Trash2 size={16} />
-                                                                </button>
-                                                            </div>
+    
+                                                        <td className="px-6 py-4 text-center hidden md:table-cell">
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); handleDeleteTransaction(t.id); }} // Stop propagation para que no abra editar
+                                                                className="text-slate-500 hover:text-red-400 p-2 rounded-full hover:bg-slate-800"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
                                                         </td>
                                                     </tr>
                                                 );
@@ -992,13 +1041,27 @@ function App() {
                                     return (
                                         <div
                                             key={goal.id}
-                                            onClick={() => handleEditSavings(goal)}
+                                            onClick={() => setSelectedSavingsHistory(goal)}
                                             className="bg-slate-800 rounded-2xl p-6 border border-slate-700 flex flex-col gap-4 relative group cursor-pointer hover:border-slate-500 transition-all"
                                         >
                                             <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                {/* 1. Botón Editar (NUEVO) */}
                                                 <button
-                                                    onClick={(e) => handleDeleteSavings(goal.id, e)}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation(); // Vital: Evita que se abra el historial al editar
+                                                        handleEditSavings(goal);
+                                                    }}
+                                                    className="p-2 bg-slate-700 hover:bg-blue-500/20 hover:text-blue-500 rounded-full text-slate-400 transition-colors"
+                                                    title="Editar Meta"
+                                                >
+                                                    <Edit2 size={16} />
+                                                </button>
+
+                                                {/* 2. Botón Eliminar (YA EXISTÍA) */}
+                                                <button
+                                                    onClick={(e) => handleDeleteSavings(goal.id, e)} // Este ya tiene stopPropagation dentro de la función handleDeleteSavings
                                                     className="p-2 bg-slate-700 hover:bg-red-500/20 hover:text-red-500 rounded-full text-slate-400 transition-colors"
+                                                    title="Eliminar Meta"
                                                 >
                                                     <Trash2 size={16} />
                                                 </button>
@@ -1243,6 +1306,40 @@ function App() {
                     onTransfer={handleTransferToSavings}
                     currentBalance={dashboardData.balance} // <--- NUEVA PROP: Pasamos el saldo
                 />
+                {/* --- MODAL HISTORIAL DE AHORROS --- */}
+                {selectedSavingsHistory && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedSavingsHistory(null)}>
+                        <div className="bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl border border-slate-700 overflow-hidden" onClick={e => e.stopPropagation()}>
+                            <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-850">
+                                <h3 className="font-bold text-white flex items-center gap-2">
+                                    <History size={18} className="text-primary-500"/> Historial: {selectedSavingsHistory.name}
+                                </h3>
+                                <button onClick={() => setSelectedSavingsHistory(null)}><X size={20} className="text-slate-400"/></button>
+                            </div>
+                            <div className="p-0 max-h-[60vh] overflow-y-auto">
+                                {getSavingsHistory(selectedSavingsHistory.name).length === 0 ? (
+                                    <div className="p-8 text-center text-slate-500 text-sm">No hay movimientos registrados para esta meta.</div>
+                                ) : (
+                                    <table className="w-full text-sm text-left">
+                                        <tbody className="divide-y divide-slate-700">
+                                            {getSavingsHistory(selectedSavingsHistory.name).map(tx => (
+                                                <tr key={tx.id} className="bg-slate-800">
+                                                    <td className="p-4">
+                                                        <div className="text-white font-medium">{tx.date.substring(0, 10)}</div>
+                                                        <div className="text-xs text-slate-500">Aporte manual/transferencia</div>
+                                                    </td>
+                                                    <td className="p-4 text-right font-bold text-emerald-400">
+                                                        +${formatMoney(tx.amount)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
 
             </main>
 
