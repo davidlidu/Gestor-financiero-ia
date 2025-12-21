@@ -12,6 +12,14 @@ interface Props {
   incomeCategories: Category[];  // <--- CAMBIO: Ahora recibe objetos Category
 }
 
+const getLocalDate = () => {
+  const now = new Date();
+  // Ajuste manual para obtener YYYY-MM-DD en hora local
+  const offset = now.getTimezoneOffset() * 60000;
+  const localDate = new Date(now.getTime() - offset);
+  return localDate.toISOString().split('T')[0];
+};
+
 export const TransactionModal: React.FC<Props> = ({ 
   isOpen, 
   onClose, 
@@ -29,7 +37,7 @@ export const TransactionModal: React.FC<Props> = ({
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
   const [type, setType] = useState<TransactionType>('expense');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(getLocalDate());
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer'>('transfer');
 
   // Media State
@@ -83,7 +91,7 @@ export const TransactionModal: React.FC<Props> = ({
         setType('expense');
         // Seleccionamos el nombre de la primera categoría disponible
         setCategory(expenseCategories[0]?.name || '');
-        setDate(new Date().toISOString().split('T')[0]);
+        setDate(getLocalDate());
         setPaymentMethod('transfer');
         setActiveTab('manual');
       }
@@ -136,7 +144,11 @@ export const TransactionModal: React.FC<Props> = ({
         const result = await GeminiService.processReceipt(base64);
         
         // Auto-fill form
-        if (result.amount) setAmount(result.amount.toString());
+        if (result.amount) {
+          const rawVal = result.amount.toString();
+          setAmount(rawVal); // 1. Guarda el valor para la Base de Datos
+          setDisplayAmount(formatCurrency(rawVal)); // 2. Actualiza el Input visual con los puntos
+      }
         if (result.description) setDescription(result.description);
         if (result.category) {
             // Buscamos coincidencia en los objetos por nombre
@@ -179,7 +191,11 @@ export const TransactionModal: React.FC<Props> = ({
              try {
                 const result = await GeminiService.processVoiceNote(base64);
                 
-                if (result.amount) setAmount(result.amount.toString());
+                if (result.amount) {
+                  const rawVal = result.amount.toString();
+                  setAmount(rawVal);
+                  setDisplayAmount(formatCurrency(rawVal)); // <--- AGREGAR ESTO
+              }
                 if (result.description) setDescription(result.description);
                 if (result.category) {
                      const list = result.type === 'income' ? incomeCategories : expenseCategories;

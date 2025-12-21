@@ -269,33 +269,43 @@ function App() {
         }
     };
 
-    const handleTransferToSavings = (goalId: string, amount: number) => {
-        // 1. Create an Expense Transaction
-        const goal = savings.find(s => s.id === goalId);
-        const newTx: Transaction = {
-            id: Date.now().toString(),
-            amount: amount,
-            category: 'Ahorro', // Ensure this category exists or is handled
-            description: `Transferencia a: ${goal?.name}`,
-            date: new Date().toISOString().split('T')[0],
-            type: 'expense',
-            method: 'manual',
-            paymentMethod: 'transfer',
-            userId: user?.id
-        };
-        StorageService.saveTransaction(newTx);
-        setTransactions(StorageService.getTransactions());
+// --- App.tsx ---
 
-        // 2. Update Savings Goal
-        if (goal) {
-            const updatedGoal = { ...goal, currentAmount: goal.currentAmount + amount };
-            const updatedSavings = StorageService.saveSavingsGoal(updatedGoal);
-            setSavings(updatedSavings);
-        }
-        // Cerramos el modal
-        setIsTransferModalOpen(false);
+const handleTransferToSavings = async (goalId: string, amount: number) => {
+    const goal = savings.find(s => s.id === goalId);
+    if (!goal) return;
+
+    // 1. Crear transacción de egreso (tipo 'expense')
+    const newTx: Transaction = {
+        id: '', // El backend generará el ID
+        amount: amount,
+        category: 'Ahorro',
+        description: `Transferencia a: ${goal.name}`,
+        date: new Date().toISOString().split('T')[0], // O usa getLocalDate() si ya la tienes
+        type: 'expense',
+        method: 'manual',
+        paymentMethod: 'transfer',
+        userId: user?.id
     };
 
+    try {
+        // AWAIT es clave aquí para evitar la pantalla blanca
+        const updatedTxList = await StorageService.saveTransaction(newTx);
+        setTransactions(updatedTxList);
+
+        // 2. Actualizar la meta de ahorro (sumar monto)
+        const updatedGoal = { ...goal, currentAmount: goal.currentAmount + amount };
+        const updatedSavingsList = await StorageService.saveSavingsGoal(updatedGoal);
+        setSavings(updatedSavingsList);
+        
+        // 3. Cerrar modal solo al terminar todo
+        setIsTransferModalOpen(false);
+        
+    } catch (error) {
+        console.error("Error en transferencia:", error);
+        alert("Hubo un error al realizar la transferencia.");
+    }
+};
     // --- Export Logic ---
     const handleExportCSV = () => {
         if (filteredTransactions.length === 0) {
@@ -807,12 +817,14 @@ function App() {
             : (t.category === 'Ahorro' ? LucideIcons.PiggyBank : LucideIcons.HelpCircle);
             
         // 2. Formateo de Fecha (Ej: 18 DIC)
-        const dateObj = new Date(t.date);
-        // Corregimos zona horaria tomando la parte UTC o string directo
-        const day = dateObj.getDate() || parseInt(t.date.split('-')[2]);
+        // Dividimos el string "2025-12-21" manualmente para evitar conversiones de hora
+        const [yearStr, monthStr, dayStr] = t.date.split('-'); 
+
+        const day = dayStr; // Usamos el día tal cual viene del texto
         const monthNames = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
-        const monthIndex = dateObj.getMonth(); 
-        const month = monthNames[monthIndex] || monthNames[parseInt(t.date.split('-')[1]) - 1];
+        // Restamos 1 al mes porque en el array ENE es 0, pero en fecha string es "01"
+        const monthIndex = parseInt(monthStr) - 1; 
+        const month = monthNames[monthIndex];
 
         // 3. Detectar si es Ahorro para color AZUL
         const isSavings = t.category === 'Ahorro';
@@ -1141,7 +1153,13 @@ function App() {
                 {/* Modals */}
                 <TransactionModal isOpen={isTransactionModalOpen} onClose={() => { setIsTransactionModalOpen(false); setEditingTransaction(null); }} onSave={handleSaveTransaction} initialData={editingTransaction} expenseCategories={expenseCategories} incomeCategories={incomeCategories} />
                 <SavingsModal isOpen={isSavingsModalOpen} onClose={() => { setIsSavingsModalOpen(false); setEditingSavings(null); }} onSave={handleSaveSavings} initialData={editingSavings} />
-                <TransferModal isOpen={isTransferModalOpen} onClose={() => setIsTransferModalOpen(false)} savingsGoals={savings} onTransfer={handleTransferToSavings} />
+                <TransferModal
+                    isOpen={isTransferModalOpen}
+                    onClose={() => setIsTransferModalOpen(false)}
+                    savingsGoals={savings}
+                    onTransfer={handleTransferToSavings}
+                    currentBalance={dashboardData.balance} // <--- NUEVA PROP: Pasamos el saldo
+                />
 
             </main>
 

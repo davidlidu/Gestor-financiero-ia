@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ArrowRight, PiggyBank, Check } from 'lucide-react';
+import { X, ArrowRight, PiggyBank, Check, Wallet } from 'lucide-react';
 import { SavingsGoal } from '../types';
 
 interface Props {
@@ -7,19 +7,55 @@ interface Props {
   onClose: () => void;
   savingsGoals: SavingsGoal[];
   onTransfer: (goalId: string, amount: number) => void;
+  currentBalance: number; // <--- Nuevo Prop recibido
 }
 
-export const TransferModal: React.FC<Props> = ({ isOpen, onClose, savingsGoals, onTransfer }) => {
+// Helper para formato de moneda (Miles con punto)
+const formatMoney = (amount: number) => {
+    return new Intl.NumberFormat('es-CO', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+    }).format(amount);
+};
+
+export const TransferModal: React.FC<Props> = ({ isOpen, onClose, savingsGoals, onTransfer, currentBalance }) => {
   const [selectedGoalId, setSelectedGoalId] = useState('');
   const [amount, setAmount] = useState('');
+
+  // Estado visual para el input con puntos
+  const [displayAmount, setDisplayAmount] = useState('');
+
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (val === '') {
+        setDisplayAmount('');
+        setAmount('');
+        return;
+    }
+    
+    // Limpiamos puntos para guardar el número real
+    const rawValue = val.replace(/\./g, '').replace(/,/g, '');
+    if (!isNaN(Number(rawValue))) {
+        setAmount(rawValue);
+        setDisplayAmount(formatMoney(Number(rawValue)));
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedGoalId && amount) {
-      onTransfer(selectedGoalId, parseFloat(amount));
+      const numAmount = parseFloat(amount);
+      if (numAmount > currentBalance) {
+          alert("Fondos insuficientes en la billetera.");
+          return;
+      }
+      onTransfer(selectedGoalId, numAmount);
+      
+      // Limpiar estados
       setAmount('');
+      setDisplayAmount('');
       setSelectedGoalId('');
-      onClose();
+      // El cierre lo maneja el padre al terminar la operación
     }
   };
 
@@ -39,10 +75,25 @@ export const TransferModal: React.FC<Props> = ({ isOpen, onClose, savingsGoals, 
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          <div className="flex flex-col items-center justify-center space-y-2 mb-4">
-             <div className="text-sm text-slate-400">Desde Billetera Principal</div>
-             <ArrowRight className="text-slate-500 rotate-90" />
-             <div className="text-sm text-primary-400 font-medium">Hacia Meta de Ahorro</div>
+          
+          {/* Visualización del Flujo */}
+          <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50 flex flex-col gap-3">
+             <div className="flex justify-between items-center text-sm">
+                 <span className="text-slate-400 flex items-center gap-2">
+                    <Wallet size={14} /> Desde Billetera
+                 </span>
+                 <span className="text-white font-bold tracking-wide">
+                    ${formatMoney(currentBalance)}
+                 </span>
+             </div>
+             
+             <div className="flex justify-center text-slate-600">
+                <ArrowRight size={16} className="rotate-90" />
+             </div>
+
+             <div className="text-center text-sm text-primary-400 font-medium">
+                Hacia Meta de Ahorro
+             </div>
           </div>
 
           <div>
@@ -50,13 +101,13 @@ export const TransferModal: React.FC<Props> = ({ isOpen, onClose, savingsGoals, 
             <select 
               value={selectedGoalId}
               onChange={(e) => setSelectedGoalId(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-3 text-white focus:outline-none focus:border-primary-500"
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-3 text-white focus:outline-none focus:border-primary-500 appearance-none"
               required
             >
-              <option value="">-- Seleccionar Meta --</option>
+              <option value="">-- Seleccionar Destino --</option>
               {savingsGoals.map(goal => (
                 <option key={goal.id} value={goal.id}>
-                  {goal.name} (Actual: ${goal.currentAmount.toLocaleString()})
+                  {goal.name} (Saldo: ${formatMoney(goal.currentAmount)})
                 </option>
               ))}
             </select>
@@ -67,21 +118,24 @@ export const TransferModal: React.FC<Props> = ({ isOpen, onClose, savingsGoals, 
             <div className="relative">
                 <span className="absolute left-3 top-3 text-slate-500">$</span>
                 <input 
-                  type="number" 
-                  value={amount} 
-                  onChange={e => setAmount(e.target.value)}
+                  type="text" 
+                  inputMode="numeric"
+                  value={displayAmount} 
+                  onChange={handleAmountChange}
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-6 pr-3 py-3 text-white focus:outline-none focus:border-primary-500 text-lg font-bold"
-                  placeholder="0.00"
+                  placeholder="0"
                   required
-                  min="1"
                 />
             </div>
+            {amount && parseFloat(amount) > currentBalance && (
+                <p className="text-xs text-red-400 mt-1">* El monto excede tu saldo disponible.</p>
+            )}
           </div>
 
           <button 
             type="submit"
-            disabled={!selectedGoalId || !amount}
-            className="w-full bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 shadow-lg shadow-primary-500/20"
+            disabled={!selectedGoalId || !amount || parseFloat(amount) > currentBalance}
+            className="w-full bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 shadow-lg shadow-primary-500/20 transition-all"
           >
             <Check size={18} /> Confirmar Transferencia
           </button>
