@@ -637,66 +637,84 @@ const handleTransferToSavings = async (goalId: string, amount: number) => {
 
                 <div className="p-4 lg:p-8 max-w-7xl mx-auto space-y-6 pb-24">
 
-                    {/* Filter Component Reusable */}
-                    {(view === 'dashboard' || view === 'transactions') && (
-                        <div className="bg-slate-800 rounded-xl p-4 border border-slate-700 flex flex-col md:flex-row gap-4 items-center mb-6">
-                            <div className="flex items-center gap-2 text-slate-400">
-                                <Filter size={18} />
-                                <span className="text-sm font-medium">Filtrar:</span>
-                            </div>
-                            <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-2 w-full">
-                                <input
-                                    type="date"
-                                    value={filterStartDate}
-                                    onChange={(e) => setFilterStartDate(e.target.value)}
-                                    className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white"
-                                    placeholder="Desde"
-                                />
-                                <input
-                                    type="date"
-                                    value={filterEndDate}
-                                    onChange={(e) => setFilterEndDate(e.target.value)}
-                                    className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white"
-                                    placeholder="Hasta"
-                                />
-                                <select
-                                    value={filterType}
-                                    onChange={(e) => setFilterType(e.target.value as 'all' | 'income' | 'expense')}
-                                    className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white"
-                                >
-                                    <option value="all">Todos los Tipos</option>
-                                    <option value="income">Ingresos</option>
-                                    <option value="expense">Gastos</option>
-                                </select>
-                                <select
-                                    value={filterCategory}
-                                    onChange={(e) => setFilterCategory(e.target.value)}
-                                    className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white"
-                                >
-                                    <option value="">Todas las Categorías</option>
-                                    <optgroup label="Gastos">
-                                        {/* Usamos c.id y c.name */}
-                                        {expenseCategories.map(c => (
-                                            <option key={c.id} value={c.name}>{c.name}</option>
-                                        ))}
-                                    </optgroup>
-                                    <optgroup label="Ingresos">
-                                        {/* Usamos c.id y c.name */}
-                                        {incomeCategories.map(c => (
-                                            <option key={c.id} value={c.name}>{c.name}</option>
-                                        ))}
-                                    </optgroup>
-                                </select>
-                            </div>
-                            {(filterStartDate || filterEndDate || filterCategory || filterType !== 'all') && (
-                                <button
-                                    onClick={() => { setFilterStartDate(''); setFilterEndDate(''); setFilterCategory(''); setFilterType('all'); }}
-                                    className="text-xs text-slate-400 hover:text-white flex items-center gap-1"
-                                >
-                                    <X size={14} /> Limpiar
-                                </button>
-                            )}
-                        </div>
+            {/* Filter Component Reusable */}
+            {(view === 'dashboard' || view === 'transactions') && (
+                <div className="bg-slate-800 rounded-xl p-4 border border-slate-700 flex flex-col md:flex-row gap-4 items-center mb-6">
+                    <div className="flex items-center gap-2 text-slate-400">
+                        <Filter size={18} />
+                        <span className="text-sm font-medium">Filtros:</span>
+                    </div>
+                    {/* CAMBIO: Grid de 5 columnas para acomodar el ordenamiento */}
+                    <div className="flex-1 grid grid-cols-2 md:grid-cols-5 gap-2 w-full">
+                        <input
+                            type="date"
+                            value={filterStartDate}
+                            onChange={(e) => setFilterStartDate(e.target.value)}
+                            className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white"
+                            placeholder="Desde"
+                        />
+                        <input
+                            type="date"
+                            value={filterEndDate}
+                            onChange={(e) => setFilterEndDate(e.target.value)}
+                            className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white"
+                            placeholder="Hasta"
+                        />
+                        <select
+                            value={filterType}
+                            onChange={(e) => setFilterType(e.target.value as 'all' | 'income' | 'expense')}
+                            className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white"
+                        >
+                            <option value="all">Todos los Tipos</option>
+                            <option value="income">Ingresos</option>
+                            <option value="expense">Gastos</option>
+                        </select>
+                        <select
+                            value={filterCategory}
+                            onChange={(e) => setFilterCategory(e.target.value)}
+                            className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white"
+                        >
+                            <option value="">Todas las Categorías</option>
+                            <optgroup label="Gastos">
+                                {expenseCategories.map(c => (
+                                    <option key={c.id} value={c.name}>{c.name}</option>
+                                ))}
+                            </optgroup>
+                            <optgroup label="Ingresos">
+                                {incomeCategories.map(c => (
+                                    <option key={c.id} value={c.name}>{c.name}</option>
+                                ))}
+                            </optgroup>
+                        </select>
+
+                        {/* NUEVO SELECTOR DE ORDEN */}
+                        <select
+                            value={sortOrder}
+                            onChange={(e) => setSortOrder(e.target.value as 'date' | 'amount_asc' | 'amount_desc')}
+                            className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white font-medium"
+                        >
+                            <option value="date">📅 Fecha (Reciente)</option>
+                            <option value="amount_desc">💰 Mayor a Menor</option>
+                            <option value="amount_asc">💰 Menor a Mayor</option>
+                        </select>
+                    </div>
+
+                    {/* Botón Limpiar actualizado */}
+                    {(filterStartDate || filterEndDate || filterCategory || filterType !== 'all' || sortOrder !== 'date') && (
+                        <button
+                            onClick={() => { 
+                                setFilterStartDate(''); 
+                                setFilterEndDate(''); 
+                                setFilterCategory(''); 
+                                setFilterType('all');
+                                setSortOrder('date'); // Reseteamos también el orden
+                            }}
+                            className="text-xs text-slate-400 hover:text-white flex items-center gap-1"
+                        >
+                            <X size={14} /> Limpiar
+                        </button>
+                    )}
+                </div>
                     )}
 
                     {/* --- DASHBOARD VIEW --- */}
@@ -825,26 +843,27 @@ const handleTransferToSavings = async (goalId: string, amount: number) => {
     {filteredTransactions.map((t) => {
         // 1. Lógica segura para iconos
         const categoryObj = categories.find(c => c.name === t.category);
-        // Si es "Ahorro" o no encuentra la categoría, usa PiggyBank (Ahorro) o HelpCircle
         const IconToRender = categoryObj 
             ? (LucideIcons as any)[categoryObj.icon] 
             : (t.category === 'Ahorro' ? LucideIcons.PiggyBank : LucideIcons.HelpCircle);
             
         // 2. Formateo de Fecha (Ej: 18 DIC)
-        // Esto elimina automáticamente la parte "T00:00:00.000Z"
-        const cleanDate = typeof t.date === 'string' ? t.date.substring(0, 10) : new Date(t.date).toISOString().substring(0, 10);
-        // Dividimos el string "2025-12-21" manualmente para evitar conversiones de hora
-        const [yearStr, monthStr, dayStr] = t.date.split('-'); 
+        // Cortamos los primeros 10 caracteres para obtener siempre "YYYY-MM-DD"
+        // eliminando cualquier "T00:00:00.000Z" que venga del backend
+        const cleanDate = typeof t.date === 'string' 
+            ? t.date.substring(0, 10) 
+            : new Date(t.date).toISOString().substring(0, 10);
 
-        const day = dayStr; // Usamos el día tal cual viene del texto
+        // CORRECCIÓN IMPORTANTE: Usamos 'cleanDate' aquí, no 't.date'
+        const [yearStr, monthStr, dayStr] = cleanDate.split('-'); 
+
+        const day = dayStr; 
         const monthNames = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
-        // Restamos 1 al mes porque en el array ENE es 0, pero en fecha string es "01"
         const monthIndex = parseInt(monthStr) - 1; 
         const month = monthNames[monthIndex];
 
         // 3. Detectar si es Ahorro para color AZUL
         const isSavings = t.category === 'Ahorro';
-
         return (
         <tr key={t.id} className="hover:bg-slate-700/30 transition-colors">
             <td className="px-6 py-4">

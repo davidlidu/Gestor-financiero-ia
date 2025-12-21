@@ -3,17 +3,38 @@ import * as LucideIcons from 'lucide-react';
 
 // Lista curada de nombres de iconos útiles para finanzas
 const AVAILABLE_ICONS = [
-  // Básicos
-  'Wallet', 'Banknote', 'CreditCard', 'DollarSign', 'Coins', 'PiggyBank', 'Safe',
-  // Categorías Comunes
-  'Utensils', 'Coffee', 'Beer', 'Pizza', 'ShoppingBag', 'ShoppingCart', 'Shirt', 'Watch',
-  'Bus', 'Car', 'Fuel', 'Plane', 'Train', 'Bike', 'Map',
-  'Home', 'Bed', 'Bath', 'Sofa', 'Zap', 'Droplet', 'Wifi', 'Phone',
-  'Stethoscope', 'Pill', 'Activity', 'Heart', 'Baby', 'Dog', 'Cat',
-  'GraduationCap', 'Book', 'Pencil', 'Briefcase', 'Laptop', 'Monitor', 'Printer',
-  'Film', 'Music', 'Gamepad', 'Ticket', 'Camera', 'Headphones', 'Tv',
-  'Gift', 'PartyPopper', 'Cake', 'Flower', 'Palmtree', 'Umbrella',
-  'Hammer', 'Wrench', 'Scissors', 'Trash2', 'Shield', 'Lock', 'Key'
+  // --- Dinero e Inversiones ---
+  'Wallet', 'Banknote', 'CreditCard', 'DollarSign', 'Coins', 'PiggyBank', 'Safe', 
+  'Landmark', 'TrendingUp', 'Bitcoin', 'Receipt', 'Gavel', // Nuevos: Banco, Inversión, Cripto, Factura, Legal
+  
+  // --- Alimentación y Mercado ---
+  'Utensils', 'Coffee', 'Beer', 'Pizza', 'ShoppingBag', 'ShoppingCart', 
+  'Apple', 'Wine', 'Sandwich', // Nuevos: Mercado saludable, Licores, Lunch
+  
+  // --- Compras y Personal ---
+  'Shirt', 'Watch', 'Gift', 'Scissors', 'Smile', 'Dumbbell', // Nuevos: Bienestar, Gym
+  
+  // --- Transporte ---
+  'Bus', 'Car', 'Fuel', 'Plane', 'Train', 'Bike', 'Map', 
+  'ParkingCircle', 'Anchor', // Nuevos: Parqueadero, Viajes marinos
+  
+  // --- Hogar y Servicios ---
+  'Home', 'Bed', 'Bath', 'Sofa', 'Zap', 'Droplet', 'Wifi', 'Phone', 'Smartphone', 
+  'Lightbulb', 'Hammer', 'Wrench', 'Trash2', 'WashingMachine', // Nuevos: Celular, Luz, Lavandería
+  
+  // --- Salud y Familia ---
+  'Stethoscope', 'Pill', 'Activity', 'Heart', 'Baby', 'Dog', 'Cat', 
+  
+  // --- Educación y Trabajo ---
+  'GraduationCap', 'Book', 'Pencil', 'Briefcase', 'Laptop', 'Monitor', 'Printer', 
+  'FileText', // Nuevo: Documentos/Trámites
+  
+  // --- Entretenimiento y Tech ---
+  'Film', 'Music', 'Gamepad', 'Ticket', 'Camera', 'Headphones', 'Tv', 
+  
+  // --- Ocio y Varios ---
+  'PartyPopper', 'Cake', 'Flower', 'Palmtree', 'Umbrella', 
+  'Shield', 'Lock', 'Key', 'AlertTriangle' // Nuevo: Emergencias
 ];
 
 interface IconSelectorProps {
