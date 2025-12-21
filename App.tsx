@@ -78,6 +78,7 @@ function App() {
     const [filterEndDate, setFilterEndDate] = useState('');
     const [filterCategory, setFilterCategory] = useState('');
     const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
+    const [sortOrder, setSortOrder] = useState<'date' | 'amount_asc' | 'amount_desc'>('date');
 
     // Settings State
     const [newCategoryName, setNewCategoryName] = useState('');
@@ -413,7 +414,8 @@ const handleTransferToSavings = async (goalId: string, amount: number) => {
 
     // --- Derived Data (With Filters applied) ---
     const filteredTransactions = useMemo(() => {
-        return transactions.filter(t => {
+        // 1. Primero filtramos (la lógica que ya tenías)
+        const filtered = transactions.filter(t => {
             let matches = true;
             if (filterStartDate && t.date < filterStartDate) matches = false;
             if (filterEndDate && t.date > filterEndDate) matches = false;
@@ -421,7 +423,19 @@ const handleTransferToSavings = async (goalId: string, amount: number) => {
             if (filterType !== 'all' && t.type !== filterType) matches = false;
             return matches;
         });
-    }, [transactions, filterStartDate, filterEndDate, filterCategory, filterType]);
+
+        // 2. Luego ordenamos (NUEVA LÓGICA)
+        return filtered.sort((a, b) => {
+            if (sortOrder === 'amount_desc') {
+                return b.amount - a.amount; // Mayor a Menor
+            } else if (sortOrder === 'amount_asc') {
+                return a.amount - b.amount; // Menor a Mayor
+            } else {
+                // Por defecto: Fecha más reciente primero (orden descendente de fecha)
+                return b.date.localeCompare(a.date);
+            }
+        });
+    }, [transactions, filterStartDate, filterEndDate, filterCategory, filterType, sortOrder]); // <--- Agregamos sortOrder aquí
 
     const dashboardData = useMemo(() => {
         const dataToUse = filteredTransactions;
@@ -817,6 +831,8 @@ const handleTransferToSavings = async (goalId: string, amount: number) => {
             : (t.category === 'Ahorro' ? LucideIcons.PiggyBank : LucideIcons.HelpCircle);
             
         // 2. Formateo de Fecha (Ej: 18 DIC)
+        // Esto elimina automáticamente la parte "T00:00:00.000Z"
+        const cleanDate = typeof t.date === 'string' ? t.date.substring(0, 10) : new Date(t.date).toISOString().substring(0, 10);
         // Dividimos el string "2025-12-21" manualmente para evitar conversiones de hora
         const [yearStr, monthStr, dayStr] = t.date.split('-'); 
 
