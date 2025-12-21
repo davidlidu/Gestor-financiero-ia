@@ -29,6 +29,14 @@ const IconSelector = ({ selected, onSelect }: { selected: string, onSelect: (i: 
     );
 };
 
+// Función reutilizable para formato de moneda (Miles con punto)
+const formatMoney = (amount: number) => {
+    return new Intl.NumberFormat('es-CO', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0, // Sin decimales si no los necesitas
+    }).format(amount);
+};
+
 function App() {
     // --- Auth State ---
     const [user, setUser] = useState<UserProfile | null>(null);
@@ -676,7 +684,7 @@ function App() {
                                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary-500 to-blue-500"></div>
                                     <p className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Saldo Disponible</p>
                                     <h2 className={`text-3xl font-bold ${dashboardData.balance >= 0 ? 'text-primary-400' : 'text-red-400'}`}>
-                                        ${dashboardData.balance.toLocaleString()}
+                                        ${formatMoney(dashboardData.balance)}
                                     </h2>
                                 </div>
                                 {/* Interactive Cards */}
@@ -688,7 +696,7 @@ function App() {
                                         <p className="text-slate-400 text-xs font-medium uppercase group-hover:text-emerald-300">Ingresos</p>
                                         <div className="p-1 rounded bg-emerald-500/20 text-emerald-500"><TrendingUp size={16} /></div>
                                     </div>
-                                    <h2 className="text-2xl font-bold text-emerald-400">+${dashboardData.totalIncome.toLocaleString()}</h2>
+                                    <h2 className="text-2xl font-bold text-emerald-400">+${formatMoney(dashboardData.totalIncome)}</h2>
                                 </div>
                                 <div
                                     onClick={() => { setView('transactions'); setFilterType('expense'); setFilterCategory(''); }}
@@ -698,7 +706,7 @@ function App() {
                                         <p className="text-slate-400 text-xs font-medium uppercase group-hover:text-red-300">Egresos</p>
                                         <div className="p-1 rounded bg-red-500/20 text-red-500"><TrendingDown size={16} /></div>
                                     </div>
-                                    <h2 className="text-2xl font-bold text-red-400">-${dashboardData.totalExpense.toLocaleString()}</h2>
+                                    <h2 className="text-2xl font-bold text-red-400">-${formatMoney(dashboardData.totalExpense)}</h2>
                                 </div>
                                 <div
                                     onClick={() => { setView('savings'); }}
@@ -708,7 +716,7 @@ function App() {
                                         <p className="text-slate-400 text-xs font-medium uppercase group-hover:text-blue-300">Ahorro Total</p>
                                         <div className="p-1 rounded bg-blue-500/20 text-blue-500"><PiggyBank size={16} /></div>
                                     </div>
-                                    <h2 className="text-2xl font-bold text-blue-400">${dashboardData.totalSavings.toLocaleString()}</h2>
+                                    <h2 className="text-2xl font-bold text-blue-400">${formatMoney(dashboardData.totalSavings)}</h2>
                                 </div>
                             </div>
 
@@ -905,11 +913,11 @@ function App() {
                                                 <div className="p-3 rounded-xl bg-slate-700 text-white">
                                                     <DollarSign size={24} style={{ color: goal.color }} />
                                                 </div>
-                                                <span className="text-2xl font-bold text-white">${goal.currentAmount.toLocaleString()}</span>
+                                                <span className="text-2xl font-bold text-white">${formatMoney(goal.currentAmount)}</span>
                                             </div>
                                             <div>
                                                 <h4 className="font-bold text-slate-200">{goal.name}</h4>
-                                                <p className="text-xs text-slate-500">Meta: ${goal.targetAmount.toLocaleString()}</p>
+                                                <p className="text-xs text-slate-500">Meta: ${formatMoney(goal.targetAmount)}</p>
                                             </div>
                                             <div className="space-y-2">
                                                 <div className="flex justify-between text-xs font-medium text-slate-400">

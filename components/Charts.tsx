@@ -26,7 +26,8 @@ const CustomTooltip = ({ active, payload, label }: any) => {
           <div key={index} className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }}></div>
               <span className="text-slate-300">
-                ${entry.value.toLocaleString()}
+                {/* AQUÍ ESTÁ EL CAMBIO: 'es-CO' */}
+                ${entry.value.toLocaleString('es-CO')}
               </span>
           </div>
         ))}
@@ -58,7 +59,10 @@ export const BalanceAreaChart = ({ data }: { data: any[] }) => (
         fontSize={10} 
         tickLine={false} 
         axisLine={false}
-        tickFormatter={(value) => `$${value/1000}k`}
+        // Cambio: Usamos Intl para formatear con puntos y agregamos 'k' si es muy grande
+        tickFormatter={(value) => `$${new Intl.NumberFormat('es-CO').format(value)}`}
+        // O si prefieres la versión corta (1k, 2k):
+        // tickFormatter={(value) => `$${(value/1000).toLocaleString('es-CO')}k`}
       />
       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.4} />
       <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#6366f1', strokeWidth: 1, strokeDasharray: '4 4' }} />
