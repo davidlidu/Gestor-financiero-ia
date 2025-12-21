@@ -515,7 +515,7 @@ app.post('/api/ai/process', authenticateToken, async (req, res) => {
       if (!apiKey) return res.status(500).json({ error: "API Key de Gemini no configurada en el servidor" });
   
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-001" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
   
       let prompt = "";
       let mimeType = "";
