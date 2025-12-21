@@ -406,64 +406,68 @@ function App() {
     }, [transactions, filterStartDate, filterEndDate, filterCategory, filterType]);
 
     const dashboardData = useMemo(() => {
-        // Use filteredTransactions for the dashboard so the filters affect the charts
         const dataToUse = filteredTransactions;
 
         const totalIncome = dataToUse.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
         const totalExpense = dataToUse.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
         const balance = totalIncome - totalExpense;
-
-        // Total Savings (Sum of all goals currentAmount)
         const totalSavings = savings.reduce((acc, s) => acc + s.currentAmount, 0);
 
-        // -- Expenses Pie --
+        // -- Pies --
         const expensesByCategory = dataToUse.filter(t => t.type === 'expense').reduce((acc, t) => {
             acc[t.category] = (acc[t.category] || 0) + t.amount; return acc;
         }, {} as Record<string, number>);
         const expensePieData = Object.entries(expensesByCategory).map(([name, value]) => ({ name, value }));
 
-        // -- Income Pie --
         const incomeByCategory = dataToUse.filter(t => t.type === 'income').reduce((acc, t) => {
             acc[t.category] = (acc[t.category] || 0) + t.amount; return acc;
         }, {} as Record<string, number>);
         const incomePieData = Object.entries(incomeByCategory).map(([name, value]) => ({ name, value }));
 
-        // -- Area Data (Logic corrected for specific type view) --
-        // We create a map for dates. 
+        // -- Area Data (Corregido) --
         const dailyMap = dataToUse.reduce((acc, t) => {
-                // CORRECCIÓN: Tomamos solo la parte de la fecha antes de la 'T'
-                const dateKey = t.date.split('T')[0]; 
-                if (!acc[dateKey]) acc[dateKey] = { income: 0, expense: 0, net: 0 };
-                if (t.type === 'income') acc[dateKey].income += t.amount;
-                else acc[dateKey].expense += t.amount;
-                acc[dateKey].net = acc[dateKey].income - acc[dateKey].expense;
-                return acc;
-        }, {} as Record<string, { income: number, expense: number, net: number }>);
+            // Normalización robusta de fecha (Toma los primeros 10 chars YYYY-MM-DD)
+            const dateKey = typeof t.date === 'string' ? t.date.substring(0, 10) : new Date(t.date).toISOString().substring(0, 10);
+            
+            if (!acc[dateKey]) acc[dateKey] = { income: 0, expense: 0 };
+            
+            if (t.type === 'income') acc[dateKey].income += t.amount;
+            else acc[dateKey].expense += t.amount;
+            
+            return acc;
+        }, {} as Record<string, { income: number, expense: number }>);
 
         const sortedDates = Object.keys(dailyMap).sort();
-        let runningBalance = 0;
+        let runningAccumulator = 0; // Acumulador dinámico
 
         const areaData = sortedDates.map(dateKey => {
             const entry = dailyMap[dateKey];
-            // For general balance trend, we use net. 
-            // For "Income Trend", we might want cumulative income or just daily income?
-            // Usually "Trend" implies historical progression. Let's do cumulative for the view selected.
-            runningBalance += entry.net;
+            
+            // Lógica condicional según el modo del gráfico
+            if (chartMode === 'income') {
+                runningAccumulator += entry.income;
+                // Si quieres ver solo lo del día, usa entry.income. Si quieres acumulado, runningAccumulator
+            } else {
+                runningAccumulator += entry.expense;
+            }
+            
+            // Para el modo 'balance' (general), sería ingreso - gasto
+            const balanceValue = chartMode === 'income' ? runningAccumulator : runningAccumulator; 
 
-            const [year, month, day] = dateKey.split('-').map(Number);
-            const dateObj = new Date(year, month - 1, day);
-            const displayDate = dateObj.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+            // Formateo de fecha seguro
+            const [y, m, d] = dateKey.split('-').map(Number);
+            const dateObj = new Date(y, m - 1, d);
+            const displayDate = dateObj.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
 
             return {
                 name: displayDate,
-                saldo: runningBalance,
-                ingresoDiario: entry.income,
-                gastoDiario: entry.expense
+                saldo: balanceValue, // Recharts usa esta key según tu componente Charts.tsx
+                originalDate: dateKey
             };
         });
 
         return { totalIncome, totalExpense, balance, totalSavings, expensePieData, incomePieData, areaData };
-    }, [filteredTransactions, savings]);
+    }, [filteredTransactions, savings, chartMode]); // <--- Importante: agregar chartMode a dependencias
 
     // --- Render Auth Views ---
     if (authLoading) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-primary-500"><div className="animate-spin text-4xl">...</div></div>;

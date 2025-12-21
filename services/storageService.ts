@@ -120,22 +120,13 @@ export const StorageService = {
       return INITIAL_SAVINGS;
     }
   },
-
-  // Esta función ahora detecta si es crear o editar
   saveSavingsGoal: async (goal: SavingsGoal): Promise<SavingsGoal[]> => {
     try {
-      // Si el ID es numérico (o string numérico del backend), asumimos que ya existe
-      // Pero para seguridad, mejor verificamos si estamos editando
-      // NOTA: Tu App.tsx genera IDs con Date.now() temporalmente, 
-      // el backend generará sus propios IDs.
-      
-      // Lógica simplificada: Intentamos editar si tiene ID válido, si falla o es nuevo, creamos.
-      // Para simplificar integración con tu frontend actual:
-      
-      const isNew = !goal.id || goal.id.length > 10; // Date.now() es largo, IDs de BD suelen ser cortos "1", "2".
-      // Mejor estrategia: El frontend debe saber si está editando.
+      // Si el ID parece un timestamp (muy largo) o no existe, es POST.
+      // Si es corto (ej "1", "55"), es un ID de base de datos -> PUT.
+      const isTempId = !goal.id || goal.id.length > 8; 
 
-      if (!isNew) {
+      if (!isTempId) {
          // UPDATE
          await fetch(`${API_URL}/savings/${goal.id}`, {
              method: 'PUT',
@@ -144,10 +135,12 @@ export const StorageService = {
          });
       } else {
          // CREATE
+         // Asegúrate de no enviar el ID temporal al backend
+         const { id, ...dataToSend } = goal;
          await fetch(`${API_URL}/savings`, {
              method: 'POST',
              headers: getHeaders(),
-             body: JSON.stringify(goal)
+             body: JSON.stringify(dataToSend)
          });
       }
 
@@ -157,7 +150,6 @@ export const StorageService = {
       throw e;
     }
   },
-
   deleteSavingsGoal: async (id: string): Promise<SavingsGoal[]> => {
       try {
         await fetch(`${API_URL}/savings/${id}`, {
