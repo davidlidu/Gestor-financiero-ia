@@ -561,7 +561,9 @@ function App() {
             return {
                 name: displayDate,
                 saldo: balanceValue, // Recharts usa esta key según tu componente Charts.tsx
-                originalDate: dateKey
+                originalDate: dateKey,
+                ingresoDiario: entry.income,
+                gastoDiario: entry.expense
             };
         });
 
@@ -1044,23 +1046,24 @@ function App() {
                                             onClick={() => setSelectedSavingsHistory(goal)}
                                             className="bg-slate-800 rounded-2xl p-6 border border-slate-700 flex flex-col gap-4 relative group cursor-pointer hover:border-slate-500 transition-all"
                                         >
-                                            <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                {/* 1. Botón Editar (NUEVO) */}
+                                            {/* --- BOTONES DE ACCIÓN (Siempre visibles ahora) --- */}
+                                            <div className="absolute top-4 right-4 flex gap-2 z-10">
+                                                {/* 1. Botón Editar */}
                                                 <button
                                                     onClick={(e) => {
-                                                        e.stopPropagation(); // Vital: Evita que se abra el historial al editar
+                                                        e.stopPropagation(); // Evita abrir el historial
                                                         handleEditSavings(goal);
                                                     }}
-                                                    className="p-2 bg-slate-700 hover:bg-blue-500/20 hover:text-blue-500 rounded-full text-slate-400 transition-colors"
+                                                    className="p-2 bg-slate-700/80 hover:bg-blue-600 text-slate-300 hover:text-white rounded-full transition-colors border border-slate-600"
                                                     title="Editar Meta"
                                                 >
                                                     <Edit2 size={16} />
                                                 </button>
 
-                                                {/* 2. Botón Eliminar (YA EXISTÍA) */}
+                                                {/* 2. Botón Eliminar */}
                                                 <button
-                                                    onClick={(e) => handleDeleteSavings(goal.id, e)} // Este ya tiene stopPropagation dentro de la función handleDeleteSavings
-                                                    className="p-2 bg-slate-700 hover:bg-red-500/20 hover:text-red-500 rounded-full text-slate-400 transition-colors"
+                                                    onClick={(e) => handleDeleteSavings(goal.id, e)}
+                                                    className="p-2 bg-slate-700/80 hover:bg-red-600 text-slate-300 hover:text-white rounded-full transition-colors border border-slate-600"
                                                     title="Eliminar Meta"
                                                 >
                                                     <Trash2 size={16} />
