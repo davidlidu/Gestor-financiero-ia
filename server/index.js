@@ -521,7 +521,23 @@ app.post('/api/ai/process', authenticateToken, async (req, res) => {
       let mimeType = "";
   
       if (type === 'receipt') {
-          prompt = `Analiza esta imagen de un recibo. Extrae: amount (número), category (Hogar, Comida, Transporte, etc), description, date (YYYY-MM-DD), type ('expense'). Responde solo JSON válido sin markdown.`;
+        prompt = `
+        Analiza esta imagen de un recibo o factura. Realiza lo siguiente:
+        1. Identifica el TOTAL a pagar del recibo (un solo número final).
+        2. Genera una descripción resumiendo los ítems comprados (ej: "Cola & Pola, Queso, Detergente...").
+        3. Clasifica el gasto en UNA de estas categorías exactas: 'Alimentación', 'Transporte', 'Vivienda', 'Servicios', 'Entretenimiento', 'Salud', 'Educación', 'Ropa'. Si no encaja, usa 'Otros'.
+        4. Extrae la fecha (YYYY-MM-DD).
+        
+        Responde EXCLUSIVAMENTE con un único objeto JSON (no un array) con este formato:
+        {
+          "amount": número (total del recibo),
+          "category": "string (una de la lista)",
+          "description": "string (lista de items)",
+          "date": "YYYY-MM-DD",
+          "type": "expense"
+        }
+        Sin bloques de código markdown, solo el JSON raw.
+      `;
           mimeType = "image/jpeg";
       } else if (type === 'voice') {
           prompt = `Escucha este audio financiero. Extrae: amount (número), category, description, date (YYYY-MM-DD), type ('income' o 'expense'). Responde solo JSON válido sin markdown.`;
@@ -555,28 +571,28 @@ const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`Backend Lidutech corriendo en puerto ${PORT}`));
 
 // --- RUTA DE DIAGNÓSTICO ---
-app.get('/api/test-models', async (req, res) => {
-    try {
-      const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-      if (!apiKey) return res.json({ error: "No hay API Key" });
+// app.get('/api/test-models', async (req, res) => {
+//     try {
+//       const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+//       if (!apiKey) return res.json({ error: "No hay API Key" });
   
-      const genAI = new GoogleGenerativeAI(apiKey);
+//       const genAI = new GoogleGenerativeAI(apiKey);
       
-      // Esta función lista lo que tu Key tiene permitido ver
-      // Nota: listModels devuelve un async iterable, hay que convertirlo a array
-      const models = [];
-      let response = await genAI.getGenerativeModel({ model: "gemini-pro" }); // Dummy init
+//       // Esta función lista lo que tu Key tiene permitido ver
+//       // Nota: listModels devuelve un async iterable, hay que convertirlo a array
+//       const models = [];
+//       let response = await genAI.getGenerativeModel({ model: "gemini-pro" }); // Dummy init
       
-      // Usamos el fetch directo si el SDK se pone difícil, o el método del SDK si existe:
-      // En v0.24.1 el manager está oculto, haremos un truco simple:
-      // Intentaremos llamar a un modelo básico.
+//       // Usamos el fetch directo si el SDK se pone difícil, o el método del SDK si existe:
+//       // En v0.24.1 el manager está oculto, haremos un truco simple:
+//       // Intentaremos llamar a un modelo básico.
       
-      res.json({ 
-         message: "Si ves esto, la Key existe. Intenta usar 'gemini-1.5-flash-001' en lugar de 'gemini-1.5-flash'",
-         keyPrefix: apiKey.substring(0, 5) + "..."
-      });
+//       res.json({ 
+//          message: "Si ves esto, la Key existe. Intenta usar 'gemini-1.5-flash-001' en lugar de 'gemini-1.5-flash'",
+//          keyPrefix: apiKey.substring(0, 5) + "..."
+//       });
       
-    } catch (err) {
-      res.status(500).json({ error: err.message, stack: err.stack });
-    }
-  });
+//     } catch (err) {
+//       res.status(500).json({ error: err.message, stack: err.stack });
+//     }
+//   });
