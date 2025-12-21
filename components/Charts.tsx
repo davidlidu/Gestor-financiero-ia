@@ -79,18 +79,71 @@ export const BalanceAreaChart = ({ data }: { data: any[] }) => (
   </ResponsiveContainer>
 );
 
-export const ComparisonBarChart = ({ data }: { data: any[] }) => (
-  <ResponsiveContainer width="100%" height={200}>
-    <BarChart data={data} barGap={4}>
-      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.4} />
-      <XAxis dataKey="name" hide />
-      <Tooltip content={<CustomTooltip />} cursor={{fill: '#1e293b', opacity: 0.4}} />
-      <Legend iconType="circle" wrapperStyle={{fontSize: '12px', paddingTop: '10px'}}/>
-      <Bar dataKey="ingresos" fill="#10b981" radius={[4, 4, 0, 0]} name="Ingresos" />
-      <Bar dataKey="egresos" fill="#ef4444" radius={[4, 4, 0, 0]} name="Egresos" />
-    </BarChart>
-  </ResponsiveContainer>
-);
+export const ComparisonBarChart = ({ data }: { data: any[] }) => {
+  // Función para formatear eje Y compacto (1k, 1.5M, etc)
+  const formatYAxis = (value: number) => {
+    return new Intl.NumberFormat('es-CO', { 
+      notation: "compact", 
+      compactDisplay: "short" 
+    }).format(value);
+  };
+
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <BarChart data={data} barGap={8} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.4} />
+        
+        <XAxis 
+          dataKey="name" 
+          stroke="#64748b" 
+          fontSize={10} 
+          tickLine={false} 
+          axisLine={false} 
+          dy={10}
+        />
+        
+        <YAxis 
+          stroke="#64748b" 
+          fontSize={10} 
+          tickLine={false} 
+          axisLine={false}
+          tickFormatter={formatYAxis}
+        />
+        
+        <Tooltip 
+          content={<CustomTooltip />} 
+          cursor={{fill: '#1e293b', opacity: 0.4}} 
+        />
+        
+        <Legend 
+          verticalAlign="top"
+          align="right"
+          iconType="circle" 
+          wrapperStyle={{fontSize: '12px', paddingBottom: '20px'}}
+          formatter={(value) => <span className="text-slate-300 font-medium ml-1">{value}</span>}
+        />
+        
+        {/* Barras con esquinas redondeadas y colores modernos */}
+        <Bar 
+          dataKey="ingresoDiario" 
+          fill="#10b981" // Emerald
+          radius={[6, 6, 0, 0]} 
+          name="Ingresos" 
+          maxBarSize={50}
+          animationDuration={1500}
+        />
+        <Bar 
+          dataKey="gastoDiario" 
+          fill="#ef4444" // Red
+          radius={[6, 6, 0, 0]} 
+          name="Gastos" 
+          maxBarSize={50}
+          animationDuration={1500}
+        />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+};
 
 // Modern Palette
 const COLORS = [

@@ -2,7 +2,7 @@ import React from 'react';
 import * as LucideIcons from 'lucide-react';
 
 // Lista curada de nombres de iconos útiles para finanzas
-const AVAILABLE_ICONS = [
+export const AVAILABLE_ICONS = [
   // --- Dinero e Inversiones ---
   'Wallet', 'Banknote', 'CreditCard', 'DollarSign', 'Coins', 'PiggyBank', 'Safe', 
   'Landmark', 'TrendingUp', 'Bitcoin', 'Receipt', 'Gavel', // Nuevos: Banco, Inversión, Cripto, Factura, Legal

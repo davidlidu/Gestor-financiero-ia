@@ -7,21 +7,24 @@ import { BalanceAreaChart, CategoryPieChart, ComparisonBarChart } from './compon
 import { TransactionModal } from './components/TransactionModal';
 import { SavingsModal } from './components/SavingsModal';
 import { TransferModal } from './components/TransferModal'; // Imported TransferModal
-import { INITIAL_SAVINGS, DEFAULT_EXPENSE_CATEGORIES } from './constants';
+import { INITIAL_SAVINGS } from './constants';
+import { AVAILABLE_ICONS } from './components/IconSelector';
 import * as LucideIcons from 'lucide-react';
 
 // Componente para seleccionar iconos
 const IconSelector = ({ selected, onSelect }: { selected: string, onSelect: (i: string) => void }) => {
-    const icons = ['Utensils', 'Bus', 'Home', 'Zap', 'Film', 'Heart', 'Book', 'ShoppingBag', 'Briefcase', 'Laptop', 'Gift', 'TrendingUp', 'Coffee', 'Car', 'Smartphone', 'Music', 'DollarSign', 'CreditCard', 'Smile'];
-
     return (
-        <div className="grid grid-cols-6 gap-2 mt-2 p-2 bg-slate-900 rounded-lg border border-slate-700 max-h-32 overflow-y-auto">
-            {icons.map(iconName => {
+        <div className="grid grid-cols-6 sm:grid-cols-8 gap-2 mt-2 p-2 bg-slate-900 rounded-lg border border-slate-700 max-h-48 overflow-y-auto custom-scrollbar">
+            {AVAILABLE_ICONS.map(iconName => {
                 const Icon = (LucideIcons as any)[iconName] || LucideIcons.HelpCircle;
                 return (
-                    <button key={iconName} onClick={() => onSelect(iconName)}
-                        className={`p-2 rounded flex justify-center items-center ${selected === iconName ? 'bg-primary-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}>
-                        <Icon size={18} />
+                    <button
+                        key={iconName}
+                        onClick={() => onSelect(iconName)}
+                        title={iconName}
+                        className={`p-2 rounded-lg flex justify-center items-center transition-all ${selected === iconName ? 'bg-primary-600 text-white shadow-lg shadow-primary-500/30 scale-110' : 'text-slate-400 hover:bg-slate-700 hover:text-white'}`}
+                    >
+                        <Icon size={20} />
                     </button>
                 )
             })}
@@ -226,9 +229,37 @@ function App() {
     const handleEditTransaction = (t: Transaction) => { setEditingTransaction(t); setIsTransactionModalOpen(true); };
 
     const handleDeleteTransaction = async (id: string) => {
-        if (confirm('¿Estás seguro de eliminar este movimiento?')) {
+        // 1. Encontrar la transacción antes de borrarla
+        const txToDelete = transactions.find(t => t.id === id);
+        if (!txToDelete) return;
+
+        if (!confirm('¿Estás seguro de eliminar este movimiento?')) return;
+
+        try {
+            // 2. Lógica de Reversión de Ahorro
+            // Si es un gasto de categoría "Ahorro", intentamos descontarlo de la meta
+            if (txToDelete.category === 'Ahorro' && txToDelete.description.startsWith('Transferencia a: ')) {
+                const goalName = txToDelete.description.replace('Transferencia a: ', '').trim();
+                const goal = savings.find(g => g.name === goalName);
+
+                if (goal) {
+                    // Restamos el monto de la meta porque estamos borrando el ingreso a ella
+                    // (Opcional: validar que no quede negativo)
+                    const newCurrentAmount = Math.max(0, goal.currentAmount - txToDelete.amount);
+
+                    const updatedGoal = { ...goal, currentAmount: newCurrentAmount };
+                    const updatedSavingsList = await StorageService.saveSavingsGoal(updatedGoal);
+                    setSavings(updatedSavingsList);
+                }
+            }
+
+            // 3. Borrar la transacción
             const updated = await StorageService.deleteTransaction(id);
             setTransactions(updated);
+
+        } catch (error) {
+            console.error(error);
+            alert("Error al eliminar el movimiento");
         }
     };
 
@@ -257,56 +288,56 @@ function App() {
     const handleDeleteSavings = async (id: string, e: React.MouseEvent) => {
         // Evita que el click llegue a elementos padre o extensiones
         e.preventDefault();
-        e.stopPropagation(); 
-        
-        if(confirm('¿Estás seguro de eliminar esta meta de ahorro?')) {
-          try {
-            await StorageService.deleteSavingsGoal(id);
-            setSavings(prev => prev.filter(s => s.id !== id));
-          } catch (error) {
-            console.error(error);
-            alert("Error al eliminar la meta");
-          }
+        e.stopPropagation();
+
+        if (confirm('¿Estás seguro de eliminar esta meta de ahorro?')) {
+            try {
+                await StorageService.deleteSavingsGoal(id);
+                setSavings(prev => prev.filter(s => s.id !== id));
+            } catch (error) {
+                console.error(error);
+                alert("Error al eliminar la meta");
+            }
         }
     };
 
-// --- App.tsx ---
+    // --- App.tsx ---
 
-const handleTransferToSavings = async (goalId: string, amount: number) => {
-    const goal = savings.find(s => s.id === goalId);
-    if (!goal) return;
+    const handleTransferToSavings = async (goalId: string, amount: number) => {
+        const goal = savings.find(s => s.id === goalId);
+        if (!goal) return;
 
-    // 1. Crear transacción de egreso (tipo 'expense')
-    const newTx: Transaction = {
-        id: '', // El backend generará el ID
-        amount: amount,
-        category: 'Ahorro',
-        description: `Transferencia a: ${goal.name}`,
-        date: new Date().toISOString().split('T')[0], // O usa getLocalDate() si ya la tienes
-        type: 'expense',
-        method: 'manual',
-        paymentMethod: 'transfer',
-        userId: user?.id
+        // 1. Crear transacción de egreso (tipo 'expense')
+        const newTx: Transaction = {
+            id: '', // El backend generará el ID
+            amount: amount,
+            category: 'Ahorro',
+            description: `Transferencia a: ${goal.name}`,
+            date: new Date().toISOString().split('T')[0], // O usa getLocalDate() si ya la tienes
+            type: 'expense',
+            method: 'manual',
+            paymentMethod: 'transfer',
+            userId: user?.id
+        };
+
+        try {
+            // AWAIT es clave aquí para evitar la pantalla blanca
+            const updatedTxList = await StorageService.saveTransaction(newTx);
+            setTransactions(updatedTxList);
+
+            // 2. Actualizar la meta de ahorro (sumar monto)
+            const updatedGoal = { ...goal, currentAmount: goal.currentAmount + amount };
+            const updatedSavingsList = await StorageService.saveSavingsGoal(updatedGoal);
+            setSavings(updatedSavingsList);
+
+            // 3. Cerrar modal solo al terminar todo
+            setIsTransferModalOpen(false);
+
+        } catch (error) {
+            console.error("Error en transferencia:", error);
+            alert("Hubo un error al realizar la transferencia.");
+        }
     };
-
-    try {
-        // AWAIT es clave aquí para evitar la pantalla blanca
-        const updatedTxList = await StorageService.saveTransaction(newTx);
-        setTransactions(updatedTxList);
-
-        // 2. Actualizar la meta de ahorro (sumar monto)
-        const updatedGoal = { ...goal, currentAmount: goal.currentAmount + amount };
-        const updatedSavingsList = await StorageService.saveSavingsGoal(updatedGoal);
-        setSavings(updatedSavingsList);
-        
-        // 3. Cerrar modal solo al terminar todo
-        setIsTransferModalOpen(false);
-        
-    } catch (error) {
-        console.error("Error en transferencia:", error);
-        alert("Hubo un error al realizar la transferencia.");
-    }
-};
     // --- Export Logic ---
     const handleExportCSV = () => {
         if (filteredTransactions.length === 0) {
@@ -384,23 +415,23 @@ const handleTransferToSavings = async (goalId: string, amount: number) => {
 
     // --- Category Logic ---
     const handleAddCategory = async () => {
-        if(!newCategoryName.trim()) return;
-        
+        if (!newCategoryName.trim()) return;
+
         try {
             const newCat = await StorageService.createCategory({
                 name: newCategoryName,
                 icon: newCategoryIcon,
                 type: newCategoryType
             });
-            
+
             // Actualizamos el estado global de categorías
-            setCategories([...categories, newCat]); 
-            
+            setCategories([...categories, newCat]);
+
             // Reseteamos el formulario
             setNewCategoryName('');
             setNewCategoryIcon('DollarSign');
-        } catch (e) { 
-            alert("Error creando categoría"); 
+        } catch (e) {
+            alert("Error creando categoría");
         }
     };
 
@@ -460,12 +491,12 @@ const handleTransferToSavings = async (goalId: string, amount: number) => {
         const dailyMap = dataToUse.reduce((acc, t) => {
             // Normalización robusta de fecha (Toma los primeros 10 chars YYYY-MM-DD)
             const dateKey = typeof t.date === 'string' ? t.date.substring(0, 10) : new Date(t.date).toISOString().substring(0, 10);
-            
+
             if (!acc[dateKey]) acc[dateKey] = { income: 0, expense: 0 };
-            
+
             if (t.type === 'income') acc[dateKey].income += t.amount;
             else acc[dateKey].expense += t.amount;
-            
+
             return acc;
         }, {} as Record<string, { income: number, expense: number }>);
 
@@ -474,7 +505,7 @@ const handleTransferToSavings = async (goalId: string, amount: number) => {
 
         const areaData = sortedDates.map(dateKey => {
             const entry = dailyMap[dateKey];
-            
+
             // Lógica condicional según el modo del gráfico
             if (chartMode === 'income') {
                 runningAccumulator += entry.income;
@@ -482,9 +513,9 @@ const handleTransferToSavings = async (goalId: string, amount: number) => {
             } else {
                 runningAccumulator += entry.expense;
             }
-            
+
             // Para el modo 'balance' (general), sería ingreso - gasto
-            const balanceValue = chartMode === 'income' ? runningAccumulator : runningAccumulator; 
+            const balanceValue = chartMode === 'income' ? runningAccumulator : runningAccumulator;
 
             // Formateo de fecha seguro
             const [y, m, d] = dateKey.split('-').map(Number);
@@ -637,84 +668,86 @@ const handleTransferToSavings = async (goalId: string, amount: number) => {
 
                 <div className="p-4 lg:p-8 max-w-7xl mx-auto space-y-6 pb-24">
 
-            {/* Filter Component Reusable */}
-            {(view === 'dashboard' || view === 'transactions') && (
-                <div className="bg-slate-800 rounded-xl p-4 border border-slate-700 flex flex-col md:flex-row gap-4 items-center mb-6">
-                    <div className="flex items-center gap-2 text-slate-400">
-                        <Filter size={18} />
-                        <span className="text-sm font-medium">Filtros:</span>
-                    </div>
-                    {/* CAMBIO: Grid de 5 columnas para acomodar el ordenamiento */}
-                    <div className="flex-1 grid grid-cols-2 md:grid-cols-5 gap-2 w-full">
-                        <input
-                            type="date"
-                            value={filterStartDate}
-                            onChange={(e) => setFilterStartDate(e.target.value)}
-                            className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white"
-                            placeholder="Desde"
-                        />
-                        <input
-                            type="date"
-                            value={filterEndDate}
-                            onChange={(e) => setFilterEndDate(e.target.value)}
-                            className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white"
-                            placeholder="Hasta"
-                        />
-                        <select
-                            value={filterType}
-                            onChange={(e) => setFilterType(e.target.value as 'all' | 'income' | 'expense')}
-                            className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white"
-                        >
-                            <option value="all">Todos los Tipos</option>
-                            <option value="income">Ingresos</option>
-                            <option value="expense">Gastos</option>
-                        </select>
-                        <select
-                            value={filterCategory}
-                            onChange={(e) => setFilterCategory(e.target.value)}
-                            className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white"
-                        >
-                            <option value="">Todas las Categorías</option>
-                            <optgroup label="Gastos">
-                                {expenseCategories.map(c => (
-                                    <option key={c.id} value={c.name}>{c.name}</option>
-                                ))}
-                            </optgroup>
-                            <optgroup label="Ingresos">
-                                {incomeCategories.map(c => (
-                                    <option key={c.id} value={c.name}>{c.name}</option>
-                                ))}
-                            </optgroup>
-                        </select>
+                    {/* Filter Component Reusable (Optimizado Mobile) */}
+                    {(view === 'dashboard' || view === 'transactions') && (
+                        <div className="bg-slate-800 rounded-xl p-4 border border-slate-700 flex flex-col gap-4 mb-6">
 
-                        {/* NUEVO SELECTOR DE ORDEN */}
-                        <select
-                            value={sortOrder}
-                            onChange={(e) => setSortOrder(e.target.value as 'date' | 'amount_asc' | 'amount_desc')}
-                            className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white font-medium"
-                        >
-                            <option value="date">📅 Fecha (Reciente)</option>
-                            <option value="amount_desc">💰 Mayor a Menor</option>
-                            <option value="amount_asc">💰 Menor a Mayor</option>
-                        </select>
-                    </div>
+                            <div className="flex items-center gap-2 text-slate-400">
+                                <Filter size={18} />
+                                <span className="text-sm font-medium">Filtrar y Ordenar:</span>
+                            </div>
 
-                    {/* Botón Limpiar actualizado */}
-                    {(filterStartDate || filterEndDate || filterCategory || filterType !== 'all' || sortOrder !== 'date') && (
-                        <button
-                            onClick={() => { 
-                                setFilterStartDate(''); 
-                                setFilterEndDate(''); 
-                                setFilterCategory(''); 
-                                setFilterType('all');
-                                setSortOrder('date'); // Reseteamos también el orden
-                            }}
-                            className="text-xs text-slate-400 hover:text-white flex items-center gap-1"
-                        >
-                            <X size={14} /> Limpiar
-                        </button>
-                    )}
-                </div>
+                            {/* Grid: 1 col (móvil), 2 cols (tablet), 5 cols (PC) */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 w-full">
+                                <input
+                                    type="date"
+                                    value={filterStartDate}
+                                    onChange={(e) => setFilterStartDate(e.target.value)}
+                                    className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-xs text-white w-full"
+                                    placeholder="Desde"
+                                />
+                                <input
+                                    type="date"
+                                    value={filterEndDate}
+                                    onChange={(e) => setFilterEndDate(e.target.value)}
+                                    className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-xs text-white w-full"
+                                    placeholder="Hasta"
+                                />
+                                <select
+                                    value={filterType}
+                                    onChange={(e) => setFilterType(e.target.value as 'all' | 'income' | 'expense')}
+                                    className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-xs text-white w-full"
+                                >
+                                    <option value="all">Todos los Tipos</option>
+                                    <option value="income">Ingresos</option>
+                                    <option value="expense">Gastos</option>
+                                </select>
+                                <select
+                                    value={filterCategory}
+                                    onChange={(e) => setFilterCategory(e.target.value)}
+                                    className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-xs text-white w-full"
+                                >
+                                    <option value="">Todas las Categorías</option>
+                                    <optgroup label="Gastos">
+                                        {expenseCategories.map(c => (
+                                            <option key={c.id} value={c.name}>{c.name}</option>
+                                        ))}
+                                    </optgroup>
+                                    <optgroup label="Ingresos">
+                                        {incomeCategories.map(c => (
+                                            <option key={c.id} value={c.name}>{c.name}</option>
+                                        ))}
+                                    </optgroup>
+                                </select>
+
+                                {/* NUEVO SELECTOR DE ORDEN */}
+                                <select
+                                    value={sortOrder}
+                                    onChange={(e) => setSortOrder(e.target.value as 'date' | 'amount_asc' | 'amount_desc')}
+                                    className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-xs text-white font-medium w-full"
+                                >
+                                    <option value="date">📅 Fecha (Reciente)</option>
+                                    <option value="amount_desc">💰 Mayor a Menor</option>
+                                    <option value="amount_asc">💰 Menor a Mayor</option>
+                                </select>
+                            </div>
+
+                            {/* Botón Limpiar actualizado (Full width en móvil) */}
+                            {(filterStartDate || filterEndDate || filterCategory || filterType !== 'all' || sortOrder !== 'date') && (
+                                <button
+                                    onClick={() => {
+                                        setFilterStartDate('');
+                                        setFilterEndDate('');
+                                        setFilterCategory('');
+                                        setFilterType('all');
+                                        setSortOrder('date');
+                                    }}
+                                    className="w-full sm:w-auto bg-slate-700/50 hover:bg-slate-700 text-xs text-slate-300 hover:text-white flex items-center justify-center gap-2 py-2.5 rounded-lg transition-colors border border-slate-600/50"
+                                >
+                                    <X size={14} /> Limpiar Filtros
+                                </button>
+                            )}
+                        </div>
                     )}
 
                     {/* --- DASHBOARD VIEW --- */}
@@ -782,7 +815,7 @@ const handleTransferToSavings = async (goalId: string, amount: number) => {
                             </div>
 
                             {/* Charts Section */}
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                                 <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-sm">
                                     <h3 className="text-sm font-bold mb-6 text-slate-300">
                                         {chartMode === 'expense' ? 'Tendencia de Gastos (Acumulado)' : 'Tendencia de Ingresos (Acumulado)'}
@@ -795,6 +828,22 @@ const handleTransferToSavings = async (goalId: string, amount: number) => {
                                     </h3>
                                     <CategoryPieChart data={chartMode === 'expense' ? dashboardData.expensePieData : dashboardData.incomePieData} />
                                 </div>
+                            </div>
+
+                            {/* --- NUEVA GRÁFICA COMPARATIVA --- */}
+                            <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-sm mb-8">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-sm font-bold text-slate-300">
+                                        Comparativa: Ingresos vs Gastos
+                                    </h3>
+                                    {/* Pequeño badge informativo */}
+                                    <span className="text-xs text-slate-500 bg-slate-900 px-3 py-1 rounded-full border border-slate-700">
+                                        Periodo Seleccionado
+                                    </span>
+                                </div>
+
+                                {/* Pasamos 'areaData' que ya tiene ingresoDiario y gastoDiario calculados */}
+                                <ComparisonBarChart data={dashboardData.areaData} />
                             </div>
                         </>
                     )}
@@ -833,94 +882,93 @@ const handleTransferToSavings = async (goalId: string, amount: number) => {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-700/50">
-    {filteredTransactions.length === 0 && (
-        <tr>
-            <td colSpan={4} className="px-6 py-8 text-center text-slate-500">
-                No se encontraron movimientos.
-            </td>
-        </tr>
-    )}
-    {filteredTransactions.map((t) => {
-        // 1. Lógica segura para iconos
-        const categoryObj = categories.find(c => c.name === t.category);
-        const IconToRender = categoryObj 
-            ? (LucideIcons as any)[categoryObj.icon] 
-            : (t.category === 'Ahorro' ? LucideIcons.PiggyBank : LucideIcons.HelpCircle);
-            
-        // 2. Formateo de Fecha (Ej: 18 DIC)
-        // Cortamos los primeros 10 caracteres para obtener siempre "YYYY-MM-DD"
-        // eliminando cualquier "T00:00:00.000Z" que venga del backend
-        const cleanDate = typeof t.date === 'string' 
-            ? t.date.substring(0, 10) 
-            : new Date(t.date).toISOString().substring(0, 10);
+                                            {filteredTransactions.length === 0 && (
+                                                <tr>
+                                                    <td colSpan={4} className="px-6 py-8 text-center text-slate-500">
+                                                        No se encontraron movimientos.
+                                                    </td>
+                                                </tr>
+                                            )}
+                                            {filteredTransactions.map((t) => {
+                                                // 1. Lógica segura para iconos
+                                                const categoryObj = categories.find(c => c.name === t.category);
+                                                const IconToRender = categoryObj
+                                                    ? (LucideIcons as any)[categoryObj.icon]
+                                                    : (t.category === 'Ahorro' ? LucideIcons.PiggyBank : LucideIcons.HelpCircle);
 
-        // CORRECCIÓN IMPORTANTE: Usamos 'cleanDate' aquí, no 't.date'
-        const [yearStr, monthStr, dayStr] = cleanDate.split('-'); 
+                                                // 2. Formateo de Fecha (Ej: 18 DIC)
+                                                // Cortamos los primeros 10 caracteres para obtener siempre "YYYY-MM-DD"
+                                                // eliminando cualquier "T00:00:00.000Z" que venga del backend
+                                                const cleanDate = typeof t.date === 'string'
+                                                    ? t.date.substring(0, 10)
+                                                    : new Date(t.date).toISOString().substring(0, 10);
 
-        const day = dayStr; 
-        const monthNames = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
-        const monthIndex = parseInt(monthStr) - 1; 
-        const month = monthNames[monthIndex];
+                                                // CORRECCIÓN IMPORTANTE: Usamos 'cleanDate' aquí, no 't.date'
+                                                const [yearStr, monthStr, dayStr] = cleanDate.split('-');
 
-        // 3. Detectar si es Ahorro para color AZUL
-        const isSavings = t.category === 'Ahorro';
-        return (
-        <tr key={t.id} className="hover:bg-slate-700/30 transition-colors">
-            <td className="px-6 py-4">
-                <div className="flex items-center gap-3">
-                    {/* Fecha en Grande a la Izquierda */}
-                    <div className="flex flex-col items-center justify-center bg-slate-800 p-2 rounded-lg border border-slate-700 min-w-[60px]">
-                        <span className="text-xl font-bold text-white leading-none">{day}</span>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">{month}</span>
-                    </div>
+                                                const day = dayStr;
+                                                const monthNames = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
+                                                const monthIndex = parseInt(monthStr) - 1;
+                                                const month = monthNames[monthIndex];
 
-                    {/* Categoría Debajo (Pequeña) e Icono */}
-                    <div className="flex flex-col">
-                        <span className={`text-sm font-medium flex items-center gap-1 ${isSavings ? 'text-blue-400' : 'text-slate-200'}`}>
-                            {t.description || 'Sin descripción'}
-                        </span>
-                        <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                            {IconToRender && <IconToRender size={12} />}
-                            {t.category}
-                        </span>
-                    </div>
-                </div>
-            </td>
-            
-            {/* Ocultamos descripción detallada aquí porque ya la pusimos arriba, o mostramos el método */}
-            <td className="px-6 py-4 hidden md:table-cell">
-                <div className="flex gap-2 text-xs text-slate-500">
-                    <span className="bg-slate-800 px-2 py-1 rounded">{t.method === 'ocr' ? '📸 Auto' : t.method === 'voice' ? '🎙️ Voz' : 'Manual'}</span>
-                    <span className="bg-slate-800 px-2 py-1 rounded">{t.paymentMethod === 'cash' ? '💵 Efectivo' : '🏦 Transf.'}</span>
-                </div>
-            </td>
+                                                // 3. Detectar si es Ahorro para color AZUL
+                                                const isSavings = t.category === 'Ahorro';
+                                                return (
+                                                    <tr key={t.id} className="hover:bg-slate-700/30 transition-colors">
+                                                        <td className="px-6 py-4">
+                                                            <div className="flex items-center gap-3">
+                                                                {/* Fecha en Grande a la Izquierda */}
+                                                                <div className="flex flex-col items-center justify-center bg-slate-800 p-2 rounded-lg border border-slate-700 min-w-[60px]">
+                                                                    <span className="text-xl font-bold text-white leading-none">{day}</span>
+                                                                    <span className="text-[10px] font-bold text-slate-400 uppercase">{month}</span>
+                                                                </div>
 
-            <td className={`px-6 py-4 text-right font-bold text-lg ${
-                isSavings ? 'text-blue-400' : (t.type === 'income' ? 'text-emerald-400' : 'text-red-400')
-            }`}>
-                {t.type === 'income' ? '+' : '-'}${t.amount.toLocaleString('es-CO')}
-            </td>
+                                                                {/* Categoría Debajo (Pequeña) e Icono */}
+                                                                <div className="flex flex-col">
+                                                                    <span className={`text-sm font-medium flex items-center gap-1 ${isSavings ? 'text-blue-400' : 'text-slate-200'}`}>
+                                                                        {t.description || 'Sin descripción'}
+                                                                    </span>
+                                                                    <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                                                                        {IconToRender && <IconToRender size={12} />}
+                                                                        {t.category}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </td>
 
-            <td className="px-6 py-4 text-center">
-                <div className="flex justify-center gap-2">
-                    <button
-                        onClick={() => handleEditTransaction(t)}
-                        className="text-slate-500 hover:text-blue-400 p-2 hover:bg-slate-800 rounded-full transition-all"
-                    >
-                        <Pencil size={16} />
-                    </button>
-                    <button
-                        onClick={() => handleDeleteTransaction(t.id)}
-                        className="text-slate-500 hover:text-red-400 p-2 hover:bg-slate-800 rounded-full transition-all"
-                    >
-                        <Trash2 size={16} />
-                    </button>
-                </div>
-            </td>
-        </tr>
-        );
-    })}
-</tbody>
+                                                        {/* Ocultamos descripción detallada aquí porque ya la pusimos arriba, o mostramos el método */}
+                                                        <td className="px-6 py-4 hidden md:table-cell">
+                                                            <div className="flex gap-2 text-xs text-slate-500">
+                                                                <span className="bg-slate-800 px-2 py-1 rounded">{t.method === 'ocr' ? '📸 Auto' : t.method === 'voice' ? '🎙️ Voz' : 'Manual'}</span>
+                                                                <span className="bg-slate-800 px-2 py-1 rounded">{t.paymentMethod === 'cash' ? '💵 Efectivo' : '🏦 Transf.'}</span>
+                                                            </div>
+                                                        </td>
+
+                                                        <td className={`px-6 py-4 text-right font-bold text-lg ${isSavings ? 'text-blue-400' : (t.type === 'income' ? 'text-emerald-400' : 'text-red-400')
+                                                            }`}>
+                                                            {t.type === 'income' ? '+' : '-'}${t.amount.toLocaleString('es-CO')}
+                                                        </td>
+
+                                                        <td className="px-6 py-4 text-center">
+                                                            <div className="flex justify-center gap-2">
+                                                                <button
+                                                                    onClick={() => handleEditTransaction(t)}
+                                                                    className="text-slate-500 hover:text-blue-400 p-2 hover:bg-slate-800 rounded-full transition-all"
+                                                                >
+                                                                    <Pencil size={16} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleDeleteTransaction(t.id)}
+                                                                    className="text-slate-500 hover:text-red-400 p-2 hover:bg-slate-800 rounded-full transition-all"
+                                                                >
+                                                                    <Trash2 size={16} />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
                                     </table>
                                 </div>
                             </div>
