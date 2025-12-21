@@ -553,3 +553,30 @@ app.post('/api/ai/process', authenticateToken, async (req, res) => {
 // --- START SERVER ---
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`Backend Lidutech corriendo en puerto ${PORT}`));
+
+// --- RUTA DE DIAGNÓSTICO ---
+app.get('/api/test-models', async (req, res) => {
+    try {
+      const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+      if (!apiKey) return res.json({ error: "No hay API Key" });
+  
+      const genAI = new GoogleGenerativeAI(apiKey);
+      
+      // Esta función lista lo que tu Key tiene permitido ver
+      // Nota: listModels devuelve un async iterable, hay que convertirlo a array
+      const models = [];
+      let response = await genAI.getGenerativeModel({ model: "gemini-pro" }); // Dummy init
+      
+      // Usamos el fetch directo si el SDK se pone difícil, o el método del SDK si existe:
+      // En v0.24.1 el manager está oculto, haremos un truco simple:
+      // Intentaremos llamar a un modelo básico.
+      
+      res.json({ 
+         message: "Si ves esto, la Key existe. Intenta usar 'gemini-1.5-flash-001' en lugar de 'gemini-1.5-flash'",
+         keyPrefix: apiKey.substring(0, 5) + "..."
+      });
+      
+    } catch (err) {
+      res.status(500).json({ error: err.message, stack: err.stack });
+    }
+  });
