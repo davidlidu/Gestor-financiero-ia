@@ -100,26 +100,6 @@ function App() {
     // Para historial de ahorros
     const [selectedSavingsHistory, setSelectedSavingsHistory] = useState<SavingsGoal | null>(null);
 
-    // --- LÓGICA SWIPE (Deslizar para menú) ---
-    const minSwipeDistance = 50;
-    
-    const onTouchStart = (e: React.TouchEvent) => {
-        setTouchEnd(null);
-        setTouchStart(e.targetTouches[0].clientX);
-    };
-
-    const onTouchMove = (e: React.TouchEvent) => setTouchEnd(e.targetTouches[0].clientX);
-
-    const onTouchEnd = () => {
-        if (!touchStart || !touchEnd) return;
-        const distance = touchStart - touchEnd;
-        const isLeftSwipe = distance > minSwipeDistance;
-        const isRightSwipe = distance < -minSwipeDistance;
-
-        if (isRightSwipe) setIsMobileMenuOpen(true); // Abrir menú
-        if (isLeftSwipe) setIsMobileMenuOpen(false); // Cerrar menú
-    };
-
     // --- HELPER: Historial de Ahorros ---
     // Filtramos transacciones que sean de tipo "Ahorro" y mencionen la meta
     const getSavingsHistory = (goalName: string) => {
@@ -647,11 +627,7 @@ function App() {
 
     // --- Main App Render ---
     return (
-        <div className="min-h-screen flex bg-slate-900 text-slate-100 font-sans overflow-x-hidden"
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-        >
+        <div className="min-h-screen flex bg-slate-900 text-slate-100 font-sans overflow-x-hidden">
 
             {/* Sidebar (Desktop) */}
             <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-850 border-r border-slate-700 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
