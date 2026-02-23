@@ -48,8 +48,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                         {/* Cabecera oculta en móvil para ahorrar espacio y evitar desalineación */}
                         <thead className="bg-slate-900/50 text-xs uppercase font-medium hidden md:table-header-group">
                             <tr>
-                                <th className="px-6 py-4">Categoría / Fecha</th>
-                                <th className="px-6 py-4">Descripción / Método</th>
+                                <th className="px-6 py-4">Fecha / Categoría</th>
+                                <th className="px-6 py-4">Notas / Método</th>
                                 <th className="px-6 py-4 text-right">Monto</th>
                                 <th className="px-6 py-4 text-center">Acciones</th>
                             </tr>
@@ -102,10 +102,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                                                     {/* Info Principal */}
                                                     <div className="flex flex-col">
                                                         <span className={`text-sm font-medium ${t.category === 'Ahorro' ? 'text-blue-400' : 'text-slate-200'}`}>
-                                                            {t.description || t.category}
+                                                            {t.category}
                                                         </span>
                                                         <span className="text-xs text-slate-500 flex items-center gap-1">
-                                                            {t.category} • {t.paymentMethod === 'cash' ? 'Efectivo' : 'Banco'}
+                                                            {t.description || 'Sin notas'} • {t.paymentMethod === 'cash' ? 'Efectivo' : 'Banco'}
                                                         </span>
                                                     </div>
                                                 </div>

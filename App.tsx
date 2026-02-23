@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Settings, Plus, LayoutDashboard, Wallet, PieChart, Menu, LogOut, Trash2, Edit2, TrendingUp, TrendingDown, DollarSign, Pencil, Filter, X, Lock, Mail, User as UserIcon, ShieldCheck, PiggyBank, ArrowRightLeft, Link as LinkIcon, Save, Camera, UploadCloud, Download } from 'lucide-react';
+import { Settings, Plus, LayoutDashboard, Wallet, PieChart, Menu, LogOut, Trash2, Edit2, TrendingUp, TrendingDown, DollarSign, Pencil, Filter, X, Lock, Mail, User as UserIcon, ShieldCheck, PiggyBank, ArrowRightLeft, Link as LinkIcon, Save, Camera, UploadCloud, Download, CalendarDays } from 'lucide-react';
 import { Transaction, UserProfile, SavingsGoal, AuthState, Category } from './types';
 import { StorageService } from './services/storageService';
 import { AuthService } from './services/authService';
@@ -76,15 +76,40 @@ function App() {
     const [editingSavings, setEditingSavings] = useState<SavingsGoal | null>(null);
     const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
 
+    // --- Date Period Helpers ---
+    const getMonthRange = (offset: number = 0) => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth() + offset;
+        const start = new Date(year, month, 1);
+        const end = new Date(year, month + 1, 0); // last day of that month
+        const fmt = (d: Date) => d.toISOString().split('T')[0];
+        return { start: fmt(start), end: fmt(end) };
+    };
+
     // Filter State
-    const [filterStartDate, setFilterStartDate] = useState('');
-    const [filterEndDate, setFilterEndDate] = useState('');
+    const [filterPeriod, setFilterPeriod] = useState<'current_month' | 'prev_month' | 'custom'>('current_month');
+    const currentMonthRange = getMonthRange(0);
+    const [filterStartDate, setFilterStartDate] = useState(currentMonthRange.start);
+    const [filterEndDate, setFilterEndDate] = useState(currentMonthRange.end);
     const [filterCategory, setFilterCategory] = useState('');
     const [filterSearch, setFilterSearch] = useState('');
     const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
     const [sortOrder, setSortOrder] = useState<'date' | 'amount_asc' | 'amount_desc'>('date');
 
-
+    const handlePeriodChange = (period: 'current_month' | 'prev_month' | 'custom') => {
+        setFilterPeriod(period);
+        if (period === 'current_month') {
+            const range = getMonthRange(0);
+            setFilterStartDate(range.start);
+            setFilterEndDate(range.end);
+        } else if (period === 'prev_month') {
+            const range = getMonthRange(-1);
+            setFilterStartDate(range.start);
+            setFilterEndDate(range.end);
+        }
+        // 'custom' keeps existing dates
+    };
 
     const [showFilters, setShowFilters] = useState(false); // Colapsar filtros
     const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -399,7 +424,7 @@ function App() {
                 return b.date.localeCompare(a.date);
             }
         });
-    }, [transactions, filterStartDate, filterEndDate, filterCategory, filterType, sortOrder]); // <--- Agregamos sortOrder aquí
+    }, [transactions, filterStartDate, filterEndDate, filterCategory, filterType, sortOrder, filterSearch]); // <--- Agregamos sortOrder y filterSearch aquí
 
     const dashboardData = useMemo(() => {
         const dataToUse = filteredTransactions;
@@ -518,7 +543,38 @@ function App() {
 
                         {/* Contenido Colapsable (Siempre visible en MD, toggle en Mobile) */}
                         <div className={`px-4 pb-4 ${showFilters ? 'block' : 'hidden'} md:block`}>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 w-full">
+                            {/* --- Period Quick Buttons --- */}
+                            <div className="flex flex-wrap gap-2 mb-3">
+                                <button
+                                    onClick={() => handlePeriodChange('current_month')}
+                                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all border ${filterPeriod === 'current_month'
+                                            ? 'bg-primary-600 text-white border-primary-500 shadow-lg shadow-primary-500/20'
+                                            : 'bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500 hover:text-white'
+                                        }`}
+                                >
+                                    <CalendarDays size={14} /> Mes Actual
+                                </button>
+                                <button
+                                    onClick={() => handlePeriodChange('prev_month')}
+                                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all border ${filterPeriod === 'prev_month'
+                                            ? 'bg-primary-600 text-white border-primary-500 shadow-lg shadow-primary-500/20'
+                                            : 'bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500 hover:text-white'
+                                        }`}
+                                >
+                                    <CalendarDays size={14} /> Mes Anterior
+                                </button>
+                                <button
+                                    onClick={() => handlePeriodChange('custom')}
+                                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all border ${filterPeriod === 'custom'
+                                            ? 'bg-primary-600 text-white border-primary-500 shadow-lg shadow-primary-500/20'
+                                            : 'bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500 hover:text-white'
+                                        }`}
+                                >
+                                    <CalendarDays size={14} /> Personalizado
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 w-full">
                                 {/* Search */}
                                 <div className="relative">
                                     <span className="absolute left-3 top-3.5 text-slate-500"><Search size={16} /></span>
@@ -531,32 +587,36 @@ function App() {
                                     />
                                 </div>
 
-                                {/* INPUTS DE FECHA CORREGIDOS (Ancho fijo min y padding flecha) */}
-                                <div className="relative">
-                                    <span className="absolute left-3 top-3 text-slate-500 text-[10px] pointer-events-none">DESDE</span>
-                                    <input
-                                        type="date"
-                                        value={filterStartDate}
-                                        onChange={(e) => setFilterStartDate(e.target.value)}
-                                        className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 pb-2 pt-6 text-xs text-white min-h-[50px] focus:ring-1 focus:ring-primary-500"
-                                    />
-                                </div>
-                                <div className="relative">
-                                    <span className="absolute left-3 top-3 text-slate-500 text-[10px] pointer-events-none">HASTA</span>
-                                    <input
-                                        type="date"
-                                        value={filterEndDate}
-                                        onChange={(e) => setFilterEndDate(e.target.value)}
-                                        className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 pb-2 pt-6 text-xs text-white min-h-[50px] focus:ring-1 focus:ring-primary-500"
-                                    />
-                                </div>
+                                {/* Custom Date Pickers (only visible when filterPeriod === 'custom') */}
+                                {filterPeriod === 'custom' && (
+                                    <>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-3 text-slate-500 text-[10px] pointer-events-none">DESDE</span>
+                                            <input
+                                                type="date"
+                                                value={filterStartDate}
+                                                onChange={(e) => setFilterStartDate(e.target.value)}
+                                                className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 pb-2 pt-6 text-xs text-white min-h-[50px] focus:ring-1 focus:ring-primary-500"
+                                            />
+                                        </div>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-3 text-slate-500 text-[10px] pointer-events-none">HASTA</span>
+                                            <input
+                                                type="date"
+                                                value={filterEndDate}
+                                                onChange={(e) => setFilterEndDate(e.target.value)}
+                                                className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 pb-2 pt-6 text-xs text-white min-h-[50px] focus:ring-1 focus:ring-primary-500"
+                                            />
+                                        </div>
+                                    </>
+                                )}
 
-                                {/* SELECTS CORREGIDOS (Padding derecho para flecha) */}
+                                {/* SELECTS */}
                                 <select
                                     value={filterType}
                                     onChange={(e) => setFilterType(e.target.value as any)}
                                     className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-xs text-white w-full appearance-none pr-8"
-                                    style={{ backgroundImage: 'none' }} // Quitamos flecha nativa si molesta y usamos contenedor relativo o padding
+                                    style={{ backgroundImage: 'none' }}
                                 >
                                     <option value="all">Todos los Tipos</option>
                                     <option value="income">Ingresos</option>
@@ -584,10 +644,10 @@ function App() {
                                 </select>
                             </div>
 
-                            {(filterStartDate || filterEndDate || filterCategory || filterType !== 'all' || sortOrder !== 'date' || filterSearch) && (
+                            {(filterCategory || filterType !== 'all' || sortOrder !== 'date' || filterSearch) && (
                                 <button
-                                    onClick={() => { setFilterStartDate(''); setFilterEndDate(''); setFilterCategory(''); setFilterType('all'); setSortOrder('date'); setFilterSearch(''); }}
-                                    className="mt-3 w-full sm:w-auto bg-slate-700/50 hover:bg-slate-700 text-xs text-slate-300 hover:text-white flex items-center justify-center gap-2 py-2 rounded-lg transition-colors border border-slate-600/50"
+                                    onClick={() => { handlePeriodChange('current_month'); setFilterCategory(''); setFilterType('all'); setSortOrder('date'); setFilterSearch(''); }}
+                                    className="mt-3 w-full sm:w-auto bg-slate-700/50 hover:bg-slate-700 text-xs text-slate-300 hover:text-white flex items-center justify-center gap-2 py-2 px-4 rounded-lg transition-colors border border-slate-600/50"
                                 >
                                     <X size={14} /> Limpiar Filtros
                                 </button>
