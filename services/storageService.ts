@@ -1,4 +1,4 @@
-import { Transaction, UserProfile, SavingsGoal, Category } from '../types';
+import { Transaction, UserProfile, SavingsGoal, Category, Budget } from '../types';
 import { INITIAL_SAVINGS, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from '../constants';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -27,7 +27,7 @@ const handleResponse = async (response: Response) => {
 };
 
 export const StorageService = {
-  
+
   // --- TRANSACTIONS (Desde API) ---
 
   getTransactions: async (): Promise<Transaction[]> => {
@@ -60,17 +60,17 @@ export const StorageService = {
 
   updateTransaction: async (transaction: Transaction): Promise<Transaction[]> => {
     try {
-        // NOTA: Asegúrate de agregar la ruta PUT /api/transactions/:id en tu backend
-        // Si no la tienes, esto fallará. Te dejaré el código extra abajo.
-        await fetch(`${API_URL}/transactions/${transaction.id}`, {
-            method: 'PUT',
-            headers: getHeaders(),
-            body: JSON.stringify(transaction)
-        });
-        return await StorageService.getTransactions();
+      // NOTA: Asegúrate de agregar la ruta PUT /api/transactions/:id en tu backend
+      // Si no la tienes, esto fallará. Te dejaré el código extra abajo.
+      await fetch(`${API_URL}/transactions/${transaction.id}`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify(transaction)
+      });
+      return await StorageService.getTransactions();
     } catch (e) {
-        console.error("Error actualizando transacción:", e);
-        throw e;
+      console.error("Error actualizando transacción:", e);
+      throw e;
     }
   },
 
@@ -93,19 +93,19 @@ export const StorageService = {
   // pero mantenemos esto para actualizaciones de perfil
   saveUser: async (user: UserProfile) => {
     try {
-        await fetch(`${API_URL}/user/settings`, {
-            method: 'PUT',
-            headers: getHeaders(),
-            body: JSON.stringify({
-                n8nUrl: user.n8nUrl,
-                avatar: user.avatar,
-                password: user.password // El backend manejará el hash si viene password
-            })
-        });
-        // Actualizamos localStorage solo para redundancia, pero la verdad está en la BD
+      await fetch(`${API_URL}/user/settings`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          n8nUrl: user.n8nUrl,
+          avatar: user.avatar,
+          password: user.password // El backend manejará el hash si viene password
+        })
+      });
+      // Actualizamos localStorage solo para redundancia, pero la verdad está en la BD
     } catch (e) {
-        console.error("Error guardando perfil:", e);
-        throw e;
+      console.error("Error guardando perfil:", e);
+      throw e;
     }
   },
 
@@ -124,24 +124,24 @@ export const StorageService = {
     try {
       // Si el ID parece un timestamp (muy largo) o no existe, es POST.
       // Si es corto (ej "1", "55"), es un ID de base de datos -> PUT.
-      const isTempId = !goal.id || goal.id.length > 8; 
+      const isTempId = !goal.id || goal.id.length > 8;
 
       if (!isTempId) {
-         // UPDATE
-         await fetch(`${API_URL}/savings/${goal.id}`, {
-             method: 'PUT',
-             headers: getHeaders(),
-             body: JSON.stringify(goal)
-         });
+        // UPDATE
+        await fetch(`${API_URL}/savings/${goal.id}`, {
+          method: 'PUT',
+          headers: getHeaders(),
+          body: JSON.stringify(goal)
+        });
       } else {
-         // CREATE
-         // Asegúrate de no enviar el ID temporal al backend
-         const { id, ...dataToSend } = goal;
-         await fetch(`${API_URL}/savings`, {
-             method: 'POST',
-             headers: getHeaders(),
-             body: JSON.stringify(dataToSend)
-         });
+        // CREATE
+        // Asegúrate de no enviar el ID temporal al backend
+        const { id, ...dataToSend } = goal;
+        await fetch(`${API_URL}/savings`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify(dataToSend)
+        });
       }
 
       return await StorageService.getSavings();
@@ -151,19 +151,19 @@ export const StorageService = {
     }
   },
   deleteSavingsGoal: async (id: string): Promise<SavingsGoal[]> => {
-      try {
-        await fetch(`${API_URL}/savings/${id}`, {
-            method: 'DELETE',
-            headers: getHeaders()
-        });
-        return await StorageService.getSavings();
-      } catch (e) {
-          console.error(e);
-          throw e;
-      }
+    try {
+      await fetch(`${API_URL}/savings/${id}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      });
+      return await StorageService.getSavings();
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
   },
 
-// --- Categories Management (API) ---
+  // --- Categories Management (API) ---
 
   // Obtener todas las categorías (Ingresos y Gastos juntos)
   getCategories: async (): Promise<Category[]> => {
@@ -201,6 +201,42 @@ export const StorageService = {
     } catch (e) {
       console.error("Error eliminando categoría", e);
       throw e;
+    }
+  },
+
+  // --- BUDGETS ---
+  getBudgets: async (monthYear: string): Promise<Budget[]> => {
+    try {
+      const response = await fetch(`${API_URL}/budgets?monthYear=${monthYear}`, { headers: getHeaders() });
+      return await handleResponse(response);
+    } catch {
+      // Fallback to local storage if API is not yet implemented
+      const local = localStorage.getItem(`lidutech_budgets_${monthYear}`);
+      return local ? JSON.parse(local) : [];
+    }
+  },
+
+  saveBudget: async (budget: Budget): Promise<Budget[]> => {
+    try {
+      await fetch(`${API_URL}/budgets`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(budget)
+      });
+      return await StorageService.getBudgets(budget.monthYear);
+    } catch {
+      // Fallback local storage
+      const key = `lidutech_budgets_${budget.monthYear}`;
+      const existing = JSON.parse(localStorage.getItem(key) || '[]');
+      const idx = existing.findIndex((b: Budget) => b.categoryId === budget.categoryId);
+      if (idx >= 0) {
+        existing[idx] = budget;
+      } else {
+        budget.id = Math.random().toString(36).substring(7);
+        existing.push(budget);
+      }
+      localStorage.setItem(key, JSON.stringify(existing));
+      return existing;
     }
   }
 };

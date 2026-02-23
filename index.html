@@ -1,55 +1,97 @@
 <!DOCTYPE html>
-<html lang="es" class="dark">
+<html lang="es">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Gestor Financiero AI</title>
+  
+  <!-- Modern Typography: Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
       theme: {
         extend: {
+          fontFamily: {
+            sans: ['Outfit', 'sans-serif'],
+          },
           colors: {
-            slate: {
-              750: '#2d3748',
-              850: '#1a202c',
-              950: '#0f172a',
+            // Modern, vibrant palette
+            brand: {
+              50: '#f0fdf4',
+              100: '#dcfce7',
+              400: '#4ade80',
+              500: '#22c55e', // Vibrant Green for Income and Primary actions
+              600: '#16a34a',
             },
-            primary: {
-              500: '#10b981',
-              600: '#059669',
+            danger: {
+              50: '#fef2f2',
+              500: '#ef4444', // Red for Expenses
+              600: '#dc2626',
+            },
+            surface: {
+              50: '#ffffff',
+              100: '#f8fafc',
+              200: '#e2e8f0',
+              800: '#1e293b',
+              900: '#0f172a',
             }
+          },
+          boxShadow: {
+            'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.05)',
+            'glass-dark': '0 8px 32px 0 rgba(0, 0, 0, 0.3)',
           }
         }
       }
     }
   </script>
   <style>
+    body {
+      font-family: 'Outfit', sans-serif;
+    }
+
+    /* Custom Scrollbar */
     ::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
+      width: 6px;
+      height: 6px;
     }
 
     ::-webkit-scrollbar-track {
-      background: #1e293b;
+      background: transparent;
     }
 
     ::-webkit-scrollbar-thumb {
-      background: #475569;
+      background: #cbd5e1;
       border-radius: 4px;
+    }
+    
+    .dark ::-webkit-scrollbar-thumb {
+      background: #334155;
     }
 
     ::-webkit-scrollbar-thumb:hover {
-      background: #64748b;
+      background: #94a3b8;
+    }
+    .dark ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
     }
 
-    /* Invertir color del icono de calendario para que sea blanco en fondo oscuro */
-    input[type="date"]::-webkit-calendar-picker-indicator {
+    /* Invert calendar icon on dark mode */
+    .dark input[type="date"]::-webkit-calendar-picker-indicator {
       filter: invert(1);
       cursor: pointer;
-      opacity: 0.6;
+      opacity: 0.7;
+      transition: 0.2s;
+    }
+
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      cursor: pointer;
+      opacity: 0.5;
       transition: 0.2s;
     }
 
@@ -57,9 +99,9 @@
       opacity: 1;
     }
 
-    /* Forzar que el texto del input date sea visible */
+    /* Fix iOS date input styling */
     input[type="date"] {
-      color-scheme: dark;
+      color-scheme: light dark;
     }
   </style>
 </head>

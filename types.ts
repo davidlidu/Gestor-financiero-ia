@@ -8,7 +8,7 @@ export interface Transaction {
   date: string; // ISO String YYYY-MM-DD
   type: TransactionType;
   method: 'manual' | 'ocr' | 'voice';
-  paymentMethod?: 'cash' | 'transfer'; 
+  paymentMethod?: 'cash' | 'transfer';
   userId?: string; // For MySQL relation
 }
 
@@ -50,4 +50,13 @@ export interface Category {
   icon: string;
   type: 'income' | 'expense';
   isDefault?: boolean;
+}
+
+export interface Budget {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  amount: number;
+  userId?: string;
+  monthYear: string; // Format: YYYY-MM
 }
