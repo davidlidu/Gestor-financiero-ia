@@ -8,8 +8,9 @@ interface Props {
   onClose: () => void;
   onSave: (data: any) => void;
   initialData?: Transaction | null;
-  expenseCategories: Category[]; // <--- CAMBIO: Ahora recibe objetos Category
-  incomeCategories: Category[];  // <--- CAMBIO: Ahora recibe objetos Category
+  expenseCategories: Category[];
+  incomeCategories: Category[];
+  initialTab?: 'manual' | 'ocr' | 'voice';
 }
 
 const getLocalDate = () => {
@@ -20,18 +21,19 @@ const getLocalDate = () => {
   return localDate.toISOString().split('T')[0];
 };
 
-export const TransactionModal: React.FC<Props> = ({ 
-  isOpen, 
-  onClose, 
-  onSave, 
+export const TransactionModal: React.FC<Props> = ({
+  isOpen,
+  onClose,
+  onSave,
   initialData,
   expenseCategories,
-  incomeCategories
+  incomeCategories,
+  initialTab: initialTabProp = 'manual'
 }) => {
   const [activeTab, setActiveTab] = useState<'manual' | 'ocr' | 'voice'>('manual');
   const [loading, setLoading] = useState(false);
   const [displayAmount, setDisplayAmount] = useState('');
-  
+
   // Form State
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
@@ -56,7 +58,7 @@ export const TransactionModal: React.FC<Props> = ({
 
   const parseCurrency = (displayValue: string) => {
     return parseFloat(displayValue.replace(/\./g, ''));
-};
+  };
 
   // Update default category when type changes or categories load
   useEffect(() => {
@@ -65,12 +67,12 @@ export const TransactionModal: React.FC<Props> = ({
     const exists = currentList.some(c => c.name === category);
 
     if (!category || !exists) {
-        if (currentList.length > 0) {
-            setCategory(currentList[0].name); // Usamos .name
-        }
+      if (currentList.length > 0) {
+        setCategory(currentList[0].name); // Usamos .name
+      }
     }
   }, [type, expenseCategories, incomeCategories, category]);
-  
+
 
   useEffect(() => {
     if (isOpen) {
@@ -93,7 +95,7 @@ export const TransactionModal: React.FC<Props> = ({
         setCategory(expenseCategories[0]?.name || '');
         setDate(getLocalDate());
         setPaymentMethod('transfer');
-        setActiveTab('manual');
+        setActiveTab(initialTabProp || 'manual');
       }
       setLoading(false);
     }
@@ -103,20 +105,20 @@ export const TransactionModal: React.FC<Props> = ({
     const val = e.target.value;
     // Permitir borrar todo
     if (val === '') {
-        setDisplayAmount('');
-        setAmount('');
-        return;
+      setDisplayAmount('');
+      setAmount('');
+      return;
     }
-    
+
     // Formatear visualmente
     const formatted = formatCurrency(val);
     setDisplayAmount(formatted);
-    
+
     // Guardar valor numérico real para el backend
     // Quitamos los puntos para obtener el numero limpio
-    const rawValue = val.replace(/\./g, '').replace(/,/g, ''); 
+    const rawValue = val.replace(/\./g, '').replace(/,/g, '');
     setAmount(rawValue);
-};
+  };
 
   const handleSave = () => {
     onSave({
@@ -142,20 +144,20 @@ export const TransactionModal: React.FC<Props> = ({
       try {
         const base64 = reader.result as string;
         const result = await GeminiService.processReceipt(base64);
-        
+
         // Auto-fill form
         if (result.amount) {
           const rawVal = result.amount.toString();
           setAmount(rawVal); // 1. Guarda el valor para la Base de Datos
           setDisplayAmount(formatCurrency(rawVal)); // 2. Actualiza el Input visual con los puntos
-      }
+        }
         if (result.description) setDescription(result.description);
         if (result.category) {
-            // Buscamos coincidencia en los objetos por nombre
-            const match = expenseCategories.find(c => 
-                c.name.toLowerCase().includes(result.category.toLowerCase())
-            );
-            setCategory(match ? match.name : (expenseCategories[0]?.name || ''));
+          // Buscamos coincidencia en los objetos por nombre
+          const match = expenseCategories.find(c =>
+            c.name.toLowerCase().includes(result.category.toLowerCase())
+          );
+          setCategory(match ? match.name : (expenseCategories[0]?.name || ''));
         }
         if (result.date) setDate(result.date);
         setType('expense');
@@ -182,33 +184,33 @@ export const TransactionModal: React.FC<Props> = ({
 
       mediaRecorderRef.current.onstop = async () => {
         setLoading(true);
-        const blob = new Blob(chunksRef.current, { type: 'audio/mp3' }); 
-        
+        const blob = new Blob(chunksRef.current, { type: 'audio/mp3' });
+
         const reader = new FileReader();
         reader.readAsDataURL(blob);
         reader.onloadend = async () => {
-             const base64 = reader.result as string;
-             try {
-                const result = await GeminiService.processVoiceNote(base64);
-                
-                if (result.amount) {
-                  const rawVal = result.amount.toString();
-                  setAmount(rawVal);
-                  setDisplayAmount(formatCurrency(rawVal)); // <--- AGREGAR ESTO
-              }
-                if (result.description) setDescription(result.description);
-                if (result.category) {
-                     const list = result.type === 'income' ? incomeCategories : expenseCategories;
-                     const match = list.find(c => c.name.toLowerCase().includes(result.category.toLowerCase()));
-                     setCategory(match ? match.name : (list[0]?.name || ''));
-                }
-                if (result.type) setType(result.type as TransactionType);
-                setActiveTab('manual');
-             } catch (e) {
-                alert("No se entendió el audio.");
-             } finally {
-                setLoading(false);
-             }
+          const base64 = reader.result as string;
+          try {
+            const result = await GeminiService.processVoiceNote(base64);
+
+            if (result.amount) {
+              const rawVal = result.amount.toString();
+              setAmount(rawVal);
+              setDisplayAmount(formatCurrency(rawVal)); // <--- AGREGAR ESTO
+            }
+            if (result.description) setDescription(result.description);
+            if (result.category) {
+              const list = result.type === 'income' ? incomeCategories : expenseCategories;
+              const match = list.find(c => c.name.toLowerCase().includes(result.category.toLowerCase()));
+              setCategory(match ? match.name : (list[0]?.name || ''));
+            }
+            if (result.type) setType(result.type as TransactionType);
+            setActiveTab('manual');
+          } catch (e) {
+            alert("No se entendió el audio.");
+          } finally {
+            setLoading(false);
+          }
         };
       };
 
@@ -232,7 +234,7 @@ export const TransactionModal: React.FC<Props> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
       <div className="bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl border border-slate-700 overflow-hidden">
-        
+
         {/* Header */}
         <div className="flex justify-between items-center p-4 border-b border-slate-700">
           <h2 className="text-xl font-bold text-white">{initialData ? 'Editar Movimiento' : 'Nuevo Movimiento'}</h2>
@@ -244,19 +246,19 @@ export const TransactionModal: React.FC<Props> = ({
         {/* Tabs - Only show in Create Mode */}
         {!initialData && (
           <div className="flex p-2 gap-2 bg-slate-900/50">
-            <button 
+            <button
               onClick={() => setActiveTab('manual')}
               className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'manual' ? 'bg-primary-600 text-white' : 'text-slate-400 hover:text-white'}`}
             >
               Manual
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('ocr')}
               className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors flex justify-center items-center gap-2 ${activeTab === 'ocr' ? 'bg-primary-600 text-white' : 'text-slate-400 hover:text-white'}`}
             >
               <Camera size={16} /> Escanear
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('voice')}
               className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors flex justify-center items-center gap-2 ${activeTab === 'voice' ? 'bg-primary-600 text-white' : 'text-slate-400 hover:text-white'}`}
             >
@@ -268,10 +270,10 @@ export const TransactionModal: React.FC<Props> = ({
         {/* Content */}
         <div className="p-6 min-h-[300px] flex flex-col justify-center">
           {loading ? (
-             <div className="flex flex-col items-center gap-4 text-slate-300">
-                <Loader2 size={48} className="animate-spin text-primary-500" />
-                <p>Analizando con IA...</p>
-             </div>
+            <div className="flex flex-col items-center gap-4 text-slate-300">
+              <Loader2 size={48} className="animate-spin text-primary-500" />
+              <p>Analizando con IA...</p>
+            </div>
           ) : (
             <>
               {(activeTab === 'manual' || initialData) && (
@@ -289,51 +291,51 @@ export const TransactionModal: React.FC<Props> = ({
                   <div>
                     <label className="block text-xs font-medium text-slate-400 mb-1">Método de Pago</label>
                     <div className="grid grid-cols-2 gap-2">
-                        <button 
-                            onClick={() => setPaymentMethod('transfer')}
-                            className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${paymentMethod === 'transfer' ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-600'}`}
-                        >
-                            <ArrowRightLeft size={16} /> Transferencia
-                        </button>
-                        <button 
-                            onClick={() => setPaymentMethod('cash')}
-                            className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${paymentMethod === 'cash' ? 'bg-green-600/20 border-green-500 text-green-400' : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-600'}`}
-                        >
-                            <Banknote size={16} /> Efectivo
-                        </button>
+                      <button
+                        onClick={() => setPaymentMethod('transfer')}
+                        className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${paymentMethod === 'transfer' ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-600'}`}
+                      >
+                        <ArrowRightLeft size={16} /> Transferencia
+                      </button>
+                      <button
+                        onClick={() => setPaymentMethod('cash')}
+                        className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${paymentMethod === 'cash' ? 'bg-green-600/20 border-green-500 text-green-400' : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-600'}`}
+                      >
+                        <Banknote size={16} /> Efectivo
+                      </button>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <label className="block text-xs font-medium text-slate-400 mb-1">Monto</label>
-                        <div className="relative">
-                            <span className="absolute left-3 top-2 text-slate-500">$</span>
-                            <input 
-    type="text" 
-    inputMode="numeric" // Abre teclado numérico en móviles
-    value={displayAmount} 
-    onChange={handleAmountChange}
-    className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-6 pr-3 py-2 text-white focus:outline-none focus:border-primary-500"
-    placeholder="0"
-/>
-                        </div>
+                      <label className="block text-xs font-medium text-slate-400 mb-1">Monto</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2 text-slate-500">$</span>
+                        <input
+                          type="text"
+                          inputMode="numeric" // Abre teclado numérico en móviles
+                          value={displayAmount}
+                          onChange={handleAmountChange}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-6 pr-3 py-2 text-white focus:outline-none focus:border-primary-500"
+                          placeholder="0"
+                        />
+                      </div>
                     </div>
                     <div>
-                        <label className="block text-xs font-medium text-slate-400 mb-1">Fecha</label>
-                        <input 
-                        type="date" 
-                        value={date} 
+                      <label className="block text-xs font-medium text-slate-400 mb-1">Fecha</label>
+                      <input
+                        type="date"
+                        value={date}
                         onChange={e => setDate(e.target.value)}
                         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-primary-500"
-                        />
+                      />
                     </div>
                   </div>
 
                   <div>
                     <label className="block text-xs font-medium text-slate-400 mb-1">Categoría</label>
-                    <select 
-                      value={category} 
+                    <select
+                      value={category}
                       onChange={e => setCategory(e.target.value)}
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-primary-500"
                     >
@@ -346,17 +348,17 @@ export const TransactionModal: React.FC<Props> = ({
 
                   <div>
                     <label className="block text-xs font-medium text-slate-400 mb-1">Descripción <span className="text-slate-600">(opcional)</span></label>
-                    <input 
-                      type="text" 
-                      value={description} 
+                    <input
+                      type="text"
+                      value={description}
                       onChange={e => setDescription(e.target.value)}
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-primary-500"
                       placeholder="Ej: Compra en Supermercado"
                     />
                   </div>
 
-                  <button 
-                    onClick={handleSave} 
+                  <button
+                    onClick={handleSave}
                     disabled={!amount}
                     className="w-full bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg mt-4 flex items-center justify-center gap-2"
                   >
@@ -369,10 +371,10 @@ export const TransactionModal: React.FC<Props> = ({
               {!initialData && activeTab === 'ocr' && (
                 <div className="flex flex-col items-center justify-center text-center gap-6 py-8">
                   <div className="relative group cursor-pointer">
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      capture="environment" 
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
                       onChange={handleImageUpload}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                     />
@@ -389,7 +391,7 @@ export const TransactionModal: React.FC<Props> = ({
 
               {!initialData && activeTab === 'voice' && (
                 <div className="flex flex-col items-center justify-center text-center gap-6 py-8">
-                  <button 
+                  <button
                     onClick={isRecording ? stopRecording : startRecording}
                     className={`w-32 h-32 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-500/20 text-red-500 animate-pulse border-2 border-red-500' : 'bg-slate-700 hover:bg-slate-600 text-primary-400 border-2 border-transparent'}`}
                   >
@@ -398,8 +400,8 @@ export const TransactionModal: React.FC<Props> = ({
                   <div className="space-y-2">
                     <p className="font-medium text-white">{isRecording ? 'Escuchando...' : 'Toca para hablar'}</p>
                     <p className="text-sm text-slate-400 max-w-xs">
-                        Di algo como: <br/> 
-                        <span className="italic text-slate-300">"Gasté 50 mil en gasolina hoy"</span>
+                      Di algo como: <br />
+                      <span className="italic text-slate-300">"Gasté 50 mil en gasolina hoy"</span>
                     </p>
                   </div>
                 </div>

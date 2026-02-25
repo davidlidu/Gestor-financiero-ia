@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Gestor Financiero AI</title>
+  <title>DeerSystems Financial IA</title>
 
   <!-- Modern Typography: Outfit -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -110,6 +110,45 @@
     /* Fix iOS date input styling */
     input[type="date"] {
       color-scheme: light dark;
+    }
+
+    /* Toast slide-in animation */
+    @keyframes slideInRight {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    /* Safe area bottom for iOS devices with notch/home indicator */
+    .safe-area-bottom {
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    /* Custom scrollbar for dark mode */
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+
+    /* Shimmer animation for loading bar */
+    @keyframes shimmer {
+      0% {
+        transform: translateX(-100%);
+      }
+
+      100% {
+        transform: translateX(300%);
+      }
     }
   </style>
 </head>

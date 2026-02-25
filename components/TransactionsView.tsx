@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, ArrowRightLeft, Trash2, Search } from 'lucide-react';
+import { Download, ArrowRightLeft, Trash2, Search, Camera, Mic } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { Transaction, Category } from '../types';
 import { formatMoney } from '../utils/format';
@@ -13,6 +13,59 @@ interface TransactionsViewProps {
     onOpenTransferModal: () => void;
 }
 
+// --- Helpers for date grouping ---
+const getDateGroupLabel = (dateStr: string): string => {
+    const today = new Date();
+    const todayStr = today.toISOString().substring(0, 10);
+
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().substring(0, 10);
+
+    const cleanDate = dateStr.substring(0, 10);
+
+    if (cleanDate === todayStr) return 'Hoy';
+    if (cleanDate === yesterdayStr) return 'Ayer';
+
+    // Check if same week
+    const txDate = new Date(cleanDate + 'T12:00:00');
+    const diffDays = Math.floor((today.getTime() - txDate.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays < 7 && diffDays >= 0) return 'Esta Semana';
+
+    // Format as "Enero 2026"
+    const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const [y, m] = cleanDate.split('-').map(Number);
+    return `${months[m - 1]} ${y}`;
+};
+
+const groupTransactionsByDate = (transactions: Transaction[]): { label: string; items: Transaction[] }[] => {
+    const groups: Map<string, Transaction[]> = new Map();
+
+    for (const t of transactions) {
+        const label = getDateGroupLabel(t.date);
+        if (!groups.has(label)) groups.set(label, []);
+        groups.get(label)!.push(t);
+    }
+
+    return Array.from(groups.entries()).map(([label, items]) => ({ label, items }));
+};
+
+// --- Method badge component ---
+const MethodBadge: React.FC<{ method: string }> = ({ method }) => {
+    if (method === 'ocr') return (
+        <span className="inline-flex items-center gap-1 bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-md text-[10px] font-medium border border-amber-500/20">
+            <Camera size={10} /> OCR
+        </span>
+    );
+    if (method === 'voice') return (
+        <span className="inline-flex items-center gap-1 bg-violet-500/10 text-violet-400 px-2 py-0.5 rounded-md text-[10px] font-medium border border-violet-500/20">
+            <Mic size={10} /> Voz
+        </span>
+    );
+    return null;
+};
+
+
 export const TransactionsView: React.FC<TransactionsViewProps> = ({
     filteredTransactions,
     categories,
@@ -21,130 +74,132 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     onExportCSV,
     onOpenTransferModal
 }) => {
+    const groups = groupTransactionsByDate(filteredTransactions);
+
     return (
         <div className="space-y-4">
-            <div className="flex justify-end gap-2">
-                <button
-                    onClick={onExportCSV}
-                    className="bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600 px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors"
-                    title="Descargar CSV con los filtros actuales"
-                >
-                    <Download size={16} /> Exportar CSV
-                </button>
-                <button
-                    onClick={onOpenTransferModal}
-                    className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-600/50 px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors"
-                >
-                    <ArrowRightLeft size={16} /> Enviar a Ahorros
-                </button>
-            </div>
-            <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-                <div className="p-6 border-b border-slate-700 flex justify-between items-center">
-                    <h3 className="text-lg font-bold">Historial de Movimientos</h3>
-                    <span className="text-xs text-slate-500 bg-slate-900 px-2 py-1 rounded border border-slate-700">{filteredTransactions.length} registros</span>
+            {/* Action Bar */}
+            <div className="flex justify-between items-center">
+                <div>
+                    <h3 className="text-lg font-bold text-white">Historial</h3>
+                    <p className="text-xs text-slate-500">{filteredTransactions.length} movimientos</p>
                 </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm text-slate-400">
-                        {/* Cabecera oculta en móvil para ahorrar espacio y evitar desalineación */}
-                        <thead className="bg-slate-900/50 text-xs uppercase font-medium hidden md:table-header-group">
-                            <tr>
-                                <th className="px-6 py-4">Fecha / Categoría</th>
-                                <th className="px-6 py-4">Notas / Método</th>
-                                <th className="px-6 py-4 text-right">Monto</th>
-                                <th className="px-6 py-4 text-center">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-700/50">
-                            {filteredTransactions.length === 0 && (
-                                <tr>
-                                    <td colSpan={4} className="px-8 py-16 text-center">
-                                        <div className="flex flex-col items-center justify-center text-slate-500">
-                                            <div className="w-16 h-16 bg-slate-800/50 rounded-full flex items-center justify-center mb-4 border border-slate-700 shadow-inner">
-                                                <Search size={28} className="text-slate-400 opacity-50" />
-                                            </div>
-                                            <p className="text-base font-bold text-slate-300">No se encontraron movimientos</p>
-                                            <p className="text-sm mt-1 max-w-sm mx-auto">Intenta ajustar los filtros de búsqueda o agrega un nuevo movimiento para verlos aquí.</p>
+                <div className="flex gap-2">
+                    <button
+                        onClick={onExportCSV}
+                        className="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-3 py-2 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-colors"
+                        title="Descargar CSV con los filtros actuales"
+                    >
+                        <Download size={14} /> CSV
+                    </button>
+                    <button
+                        onClick={onOpenTransferModal}
+                        className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-3 py-2 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-colors"
+                    >
+                        <ArrowRightLeft size={14} /> A Metas
+                    </button>
+                </div>
+            </div>
+
+            {/* Empty State */}
+            {filteredTransactions.length === 0 && (
+                <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-12 text-center">
+                    <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-700">
+                        <Search size={28} className="text-slate-500" />
+                    </div>
+                    <p className="text-base font-bold text-slate-300">No se encontraron movimientos</p>
+                    <p className="text-sm text-slate-500 mt-1 max-w-sm mx-auto">
+                        Intenta ajustar los filtros o usa el botón <span className="text-emerald-400">+</span> para agregar uno.
+                    </p>
+                </div>
+            )}
+
+            {/* Grouped Transactions */}
+            {groups.map((group) => (
+                <div key={group.label}>
+                    {/* Date Group Header */}
+                    <div className="flex items-center gap-3 mb-2 mt-4">
+                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                            {group.label}
+                        </h4>
+                        <div className="flex-1 h-px bg-slate-800"></div>
+                        <span className="text-[10px] text-slate-600 font-medium">{group.items.length}</span>
+                    </div>
+
+                    {/* Transaction Cards */}
+                    <div className="space-y-1.5">
+                        {group.items.map((t) => {
+                            // Category icon lookup
+                            const categoryObj = categories.find(c => c.name === t.category);
+                            const IconComponent = categoryObj
+                                ? (LucideIcons as any)[categoryObj.icon]
+                                : (t.category === 'Ahorro' ? LucideIcons.PiggyBank : LucideIcons.HelpCircle);
+                            const FinalIcon = IconComponent || LucideIcons.Circle;
+
+                            // Date format
+                            const cleanDate = typeof t.date === 'string'
+                                ? t.date.substring(0, 10)
+                                : new Date(t.date).toISOString().substring(0, 10);
+                            const [, monthStr, dayStr] = cleanDate.split('-');
+                            const monthNames = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
+                            const monthIndex = parseInt(monthStr) - 1;
+
+                            // Icon color based on type
+                            const iconBg = t.category === 'Ahorro'
+                                ? 'bg-blue-500/15 text-blue-400'
+                                : t.type === 'income'
+                                    ? 'bg-emerald-500/15 text-emerald-400'
+                                    : 'bg-red-500/10 text-red-400';
+
+                            return (
+                                <div
+                                    key={t.id}
+                                    onClick={() => onEditTransaction(t)}
+                                    className="bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 hover:border-slate-700 rounded-xl p-3 cursor-pointer transition-all group"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        {/* Category Icon */}
+                                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+                                            <FinalIcon size={20} />
                                         </div>
-                                    </td>
-                                </tr>
-                            )}
-                            {filteredTransactions.map((t) => {
-                                // 1. Lógica segura para iconos
-                                const categoryObj = categories.find(c => c.name === t.category);
-                                const IconToRender = categoryObj
-                                    ? (LucideIcons as any)[categoryObj.icon]
-                                    : (t.category === 'Ahorro' ? LucideIcons.PiggyBank : LucideIcons.HelpCircle);
 
-                                // 2. Formateo de Fecha (Ej: 18 DIC)
-                                const cleanDate = typeof t.date === 'string'
-                                    ? t.date.substring(0, 10)
-                                    : new Date(t.date).toISOString().substring(0, 10);
-
-                                const [yearStr, monthStr, dayStr] = cleanDate.split('-');
-                                const monthNames = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
-                                const monthIndex = parseInt(monthStr) - 1;
-
-                                return (
-                                    <tr
-                                        key={t.id}
-                                        onClick={() => onEditTransaction(t)} // CLICK EN TODA LA FILA PARA EDITAR
-                                        className="hover:bg-slate-700/30 transition-colors cursor-pointer group relative"
-                                    >
-                                        {/* CELDA ÚNICA EN MÓVIL (Usamos Block layout) */}
-                                        <td className="p-4 md:px-6 md:py-4 block md:table-cell">
-                                            <div className="flex items-center justify-between md:justify-start gap-3">
-                                                <div className="flex items-center gap-3">
-                                                    {/* Fecha */}
-                                                    <div className="flex flex-col items-center justify-center bg-slate-800 p-2 rounded-lg border border-slate-700 min-w-[50px] h-[50px]">
-                                                        <span className="text-lg font-bold text-white leading-none">{dayStr}</span>
-                                                        <span className="text-[10px] font-bold text-slate-400 uppercase">{monthNames[monthIndex]}</span>
-                                                    </div>
-                                                    {/* Info Principal */}
-                                                    <div className="flex flex-col">
-                                                        <span className={`text-sm font-medium ${t.category === 'Ahorro' ? 'text-blue-400' : 'text-slate-200'}`}>
-                                                            {t.category}
-                                                        </span>
-                                                        <span className="text-xs text-slate-500 flex items-center gap-1">
-                                                            {t.description || 'Sin notas'} • {t.paymentMethod === 'cash' ? 'Efectivo' : 'Banco'}
-                                                        </span>
-                                                    </div>
-                                                </div>
-
-                                                {/* EN MÓVIL: El monto va a la derecha en la misma línea visual */}
-                                                <div className="md:hidden text-right">
-                                                    <span className={`block font-bold text-base ${t.category === 'Ahorro' ? 'text-blue-400' : (t.type === 'income' ? 'text-emerald-400' : 'text-red-400')}`}>
-                                                        {t.type === 'income' ? '+' : '-'}${formatMoney(t.amount)}
-                                                    </span>
-                                                </div>
+                                        {/* Info */}
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-semibold text-slate-200 truncate">
+                                                    {t.category}
+                                                </span>
+                                                <MethodBadge method={t.method} />
                                             </div>
-                                        </td>
+                                            <span className="text-xs text-slate-500 truncate block">
+                                                {t.description || 'Sin notas'} • {dayStr} {monthNames[monthIndex]} • {t.paymentMethod === 'cash' ? 'Efectivo' : 'Banco'}
+                                            </span>
+                                        </div>
 
-                                        {/* Columnas ocultas en móvil */}
-                                        <td className="px-6 py-4 hidden md:table-cell">
-                                            <div className="flex gap-2 text-xs text-slate-500">
-                                                <span className="bg-slate-800 px-2 py-1 rounded">{t.method === 'ocr' ? 'Auto' : 'Manual'}</span>
-                                            </div>
-                                        </td>
+                                        {/* Amount */}
+                                        <div className="text-right flex-shrink-0">
+                                            <span className={`block font-bold text-base ${t.category === 'Ahorro' ? 'text-blue-400' :
+                                                    t.type === 'income' ? 'text-emerald-400' : 'text-red-400'
+                                                }`}>
+                                                {t.type === 'income' ? '+' : '-'}${formatMoney(t.amount)}
+                                            </span>
+                                        </div>
 
-                                        <td className={`px-6 py-4 text-right font-bold text-lg hidden md:table-cell ${t.type === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>
-                                            {t.type === 'income' ? '+' : '-'}${formatMoney(t.amount)}
-                                        </td>
-
-                                        <td className="px-6 py-4 text-center hidden md:table-cell">
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); onDeleteTransaction(t.id); }} // Stop propagation para que no abra editar
-                                                className="text-slate-500 hover:text-red-400 p-2 rounded-full hover:bg-slate-800"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                                        {/* Delete button (desktop) */}
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); onDeleteTransaction(t.id); }}
+                                            className="hidden md:flex text-slate-600 hover:text-red-400 p-2 rounded-lg hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
+                                            title="Eliminar"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
-            </div>
+            ))}
         </div>
     );
 };

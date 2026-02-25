@@ -37,7 +37,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
         if (!file) return;
 
         if (file.size > 2 * 1024 * 1024) { // 2MB Limit
-            alert("La imagen es muy grande. Máximo 2MB.");
+            // Silently reject — future: show toast from parent
             return;
         }
 
@@ -69,7 +69,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
 
         onUpdateUser(updatedUser);
         setNewPassword('');
-        alert('Configuración guardada correctamente.');
+        // Settings saved (parent can show toast via callback if needed)
     };
 
     const handleAddCategory = async () => {
@@ -86,7 +86,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
             setNewCategoryIcon('Circle');
         } catch (error) {
             console.error("Error al crear categoría:", error);
-            alert("Error al intentar guardar la categoría.");
         }
     };
 
@@ -97,7 +96,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
                 onUpdateCategories(categories.filter(c => c.id !== id));
             } catch (error) {
                 console.error("Error al eliminar categoría:", error);
-                alert("Error al intentar eliminar la categoría.");
             }
         }
     };

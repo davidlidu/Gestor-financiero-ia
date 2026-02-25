@@ -39,7 +39,7 @@ export const TransferModal: React.FC<Props> = ({ isOpen, onClose, savingsGoals, 
     if (selectedGoalId && amount) {
       const numAmount = parseFloat(amount);
       if (numAmount > currentBalance) {
-        alert("Fondos insuficientes en la billetera.");
+        // Inline validation already shown in JSX below
         return;
       }
       onTransfer(selectedGoalId, numAmount);

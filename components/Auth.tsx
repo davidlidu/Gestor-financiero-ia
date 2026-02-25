@@ -38,17 +38,18 @@ export function Auth({
         <div className="min-h-screen bg-surface-50 dark:bg-slate-900 flex flex-col items-center justify-center p-4 relative overflow-hidden transition-colors duration-300">
             {/* Background Decorations */}
             <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0 pointer-events-none">
-                <div className="absolute -top-20 -left-20 w-80 h-80 bg-brand-500/20 rounded-full blur-3xl"></div>
-                <div className="absolute top-40 right-10 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl"></div>
+                <div className="absolute -top-20 -left-20 w-80 h-80 bg-emerald-500/20 rounded-full blur-3xl"></div>
+                <div className="absolute top-40 right-10 w-64 h-64 bg-teal-500/20 rounded-full blur-3xl"></div>
             </div>
 
             <div className="w-full max-w-md bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-glass dark:shadow-glass-dark border border-slate-200 dark:border-slate-700 z-10 transition-colors">
                 <div className="text-center mb-8">
-                    <div className="w-16 h-16 bg-gradient-to-br from-brand-400 to-brand-600 rounded-2xl mx-auto mb-4 flex items-center justify-center shadow-lg shadow-brand-500/30">
-                        <span className="text-white font-bold text-2xl">GF</span>
+                    <div className="w-16 h-16 bg-gradient-to-br from-emerald-400 to-teal-600 rounded-2xl mx-auto mb-4 flex items-center justify-center shadow-lg shadow-emerald-500/30">
+                        <span className="text-white font-bold text-2xl">DS</span>
                     </div>
-                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">GastosAI</h1>
-                    <p className="text-slate-500 dark:text-slate-400">
+                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-1">DeerSystems</h1>
+                    <p className="text-xs font-medium text-emerald-500 uppercase tracking-widest mb-3">Financial IA</p>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm">
                         {authView.view === 'login' && 'Tu dinero, más inteligente'}
                         {authView.view === 'register' && 'Crea tu cuenta segura'}
                         {authView.view === 'verify_2fa' && 'Verificación de Seguridad'}
