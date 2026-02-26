@@ -13,6 +13,7 @@ import { Auth } from './components/Auth';
 import { TransactionsView } from './components/TransactionsView';
 import { SettingsView } from './components/SettingsView';
 import { ReportsView } from './components/ReportsView';
+import { InstallmentsView } from './components/InstallmentsView';
 import { INITIAL_SAVINGS } from './constants';
 import { AVAILABLE_ICONS } from './components/IconSelector';
 import * as LucideIcons from 'lucide-react';
@@ -68,7 +69,7 @@ function App() {
     const incomeCategories = categories.filter(c => c.type === 'income');
 
     // UI State
-    const [view, setView] = useState<'dashboard' | 'transactions' | 'savings' | 'reports' | 'settings'>('dashboard');
+    const [view, setView] = useState<'dashboard' | 'transactions' | 'savings' | 'reports' | 'installments' | 'settings'>('dashboard');
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [chartMode, setChartMode] = useState<'expense' | 'income'>('expense');
 
@@ -440,9 +441,14 @@ function App() {
     const dashboardData = useMemo(() => {
         const dataToUse = filteredTransactions;
 
+        // Filtered period totals (for charts, pies)
         const totalIncome = dataToUse.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
         const totalExpense = dataToUse.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
-        const balance = totalIncome - totalExpense;
+
+        // REAL balance = ALL-TIME income - ALL-TIME expenses (not filtered)
+        const allTimeIncome = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
+        const allTimeExpense = transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
+        const realBalance = allTimeIncome - allTimeExpense;
         const totalSavings = savings.reduce((acc, s) => acc + s.currentAmount, 0);
 
         // --- Trend: Compare with previous month ---
@@ -511,7 +517,7 @@ function App() {
             .sort((a, b) => b.date.localeCompare(a.date))
             .slice(0, 5);
 
-        return { totalIncome, totalExpense, balance, totalSavings, expensePieData, incomePieData, areaData, incomeTrend, expenseTrend, recentTransactions };
+        return { totalIncome, totalExpense, balance: realBalance, totalSavings, expensePieData, incomePieData, areaData, incomeTrend, expenseTrend, recentTransactions };
     }, [filteredTransactions, transactions, savings, chartMode]);
 
     // --- Render Auth Views ---
@@ -971,6 +977,31 @@ function App() {
                     />
                 )}
 
+                {/* --- INSTALLMENTS VIEW --- */}
+                {view === 'installments' && (
+                    <InstallmentsView
+                        onPayInstallment={async (inst, amount) => {
+                            // Create an expense transaction for the installment payment
+                            try {
+                                const txData = {
+                                    amount,
+                                    description: `Cuota: ${inst.name}`,
+                                    category: inst.category || 'Cuotas',
+                                    type: 'expense' as const,
+                                    date: new Date().toISOString().substring(0, 10),
+                                    paymentMethod: 'transfer' as const,
+                                    method: 'manual' as const
+                                };
+                                const updatedTx = await StorageService.saveTransaction(txData as any);
+                                setTransactions(updatedTx);
+                                toast.success('Pago registrado', `Cuota de ${inst.name} por $${amount.toLocaleString()} registrada como gasto.`);
+                            } catch (err) {
+                                toast.error('Error', 'No se pudo registrar el pago como movimiento.');
+                            }
+                        }}
+                    />
+                )}
+
                 {/* --- SETTINGS VIEW --- */}
                 {view === 'settings' && user && (
                     <SettingsView
@@ -994,7 +1025,7 @@ function App() {
             )}
 
             {/* Modals */}
-            <TransactionModal isOpen={isTransactionModalOpen} onClose={() => { setIsTransactionModalOpen(false); setEditingTransaction(null); setInitialTab('manual'); }} onSave={handleSaveTransaction} initialData={editingTransaction} expenseCategories={expenseCategories} incomeCategories={incomeCategories} initialTab={initialTab} />
+            <TransactionModal isOpen={isTransactionModalOpen} onClose={() => { setIsTransactionModalOpen(false); setEditingTransaction(null); setInitialTab('manual'); }} onSave={handleSaveTransaction} initialData={editingTransaction} expenseCategories={expenseCategories} incomeCategories={incomeCategories} initialTab={initialTab} onCategoryCreated={(newCat) => setCategories(prev => [...prev, newCat])} />
             <SavingsModal isOpen={isSavingsModalOpen} onClose={() => { setIsSavingsModalOpen(false); setEditingSavings(null); }} onSave={handleSaveSavings} initialData={editingSavings} />
             <TransferModal
                 isOpen={isTransferModalOpen}

@@ -204,39 +204,79 @@ export const StorageService = {
     }
   },
 
-  // --- BUDGETS ---
+  // --- BUDGETS (localStorage only — backend endpoints not yet deployed) ---
   getBudgets: async (monthYear: string): Promise<Budget[]> => {
-    try {
-      const response = await fetch(`${API_URL}/budgets?monthYear=${monthYear}`, { headers: getHeaders() });
-      return await handleResponse(response);
-    } catch {
-      // Fallback to local storage if API is not yet implemented
-      const local = localStorage.getItem(`lidutech_budgets_${monthYear}`);
-      return local ? JSON.parse(local) : [];
-    }
+    const key = `lidutech_budgets_${monthYear}`;
+    const data = localStorage.getItem(key);
+    return data ? JSON.parse(data) : [];
   },
 
   saveBudget: async (budget: Budget): Promise<Budget[]> => {
-    try {
-      await fetch(`${API_URL}/budgets`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify(budget)
-      });
-      return await StorageService.getBudgets(budget.monthYear);
-    } catch {
-      // Fallback local storage
-      const key = `lidutech_budgets_${budget.monthYear}`;
-      const existing = JSON.parse(localStorage.getItem(key) || '[]');
-      const idx = existing.findIndex((b: Budget) => b.categoryId === budget.categoryId);
-      if (idx >= 0) {
-        existing[idx] = budget;
-      } else {
-        budget.id = Math.random().toString(36).substring(7);
-        existing.push(budget);
-      }
-      localStorage.setItem(key, JSON.stringify(existing));
-      return existing;
+    const key = `lidutech_budgets_${budget.monthYear}`;
+    const existing: Budget[] = JSON.parse(localStorage.getItem(key) || '[]');
+    const idx = existing.findIndex((b: Budget) => b.categoryId === budget.categoryId);
+    if (idx >= 0) {
+      existing[idx] = { ...existing[idx], amount: budget.amount };
+    } else {
+      budget.id = Date.now().toString(36) + Math.random().toString(36).substring(2, 5);
+      existing.push(budget);
     }
+    localStorage.setItem(key, JSON.stringify(existing));
+    return existing;
+  },
+
+  deleteBudget: async (id: string, monthYear: string): Promise<Budget[]> => {
+    const key = `lidutech_budgets_${monthYear}`;
+    const existing: Budget[] = JSON.parse(localStorage.getItem(key) || '[]');
+    const filtered = existing.filter(b => b.id !== id);
+    localStorage.setItem(key, JSON.stringify(filtered));
+    return filtered;
+  },
+
+  // --- INSTALLMENTS / CUOTAS (localStorage) ---
+  getInstallments: async (): Promise<any[]> => {
+    const data = localStorage.getItem('lidutech_installments');
+    return data ? JSON.parse(data) : [];
+  },
+
+  saveInstallment: async (installment: any): Promise<any[]> => {
+    const existing = JSON.parse(localStorage.getItem('lidutech_installments') || '[]');
+    if (!installment.id) {
+      installment.id = Date.now().toString(36) + Math.random().toString(36).substring(2, 5);
+      installment.payments = [];
+      existing.push(installment);
+    } else {
+      const idx = existing.findIndex((i: any) => i.id === installment.id);
+      if (idx >= 0) existing[idx] = installment;
+    }
+    localStorage.setItem('lidutech_installments', JSON.stringify(existing));
+    return existing;
+  },
+
+  deleteInstallment: async (id: string): Promise<any[]> => {
+    const existing = JSON.parse(localStorage.getItem('lidutech_installments') || '[]');
+    const filtered = existing.filter((i: any) => i.id !== id);
+    localStorage.setItem('lidutech_installments', JSON.stringify(filtered));
+    return filtered;
+  },
+
+  addInstallmentPayment: async (installmentId: string, payment: { amount: number; date: string; transactionId?: string }): Promise<any[]> => {
+    const existing = JSON.parse(localStorage.getItem('lidutech_installments') || '[]');
+    const idx = existing.findIndex((i: any) => i.id === installmentId);
+    if (idx >= 0) {
+      const paymentRecord = {
+        id: Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
+        ...payment
+      };
+      existing[idx].payments.push(paymentRecord);
+
+      // Update next due date (add 1 month)
+      const currentDue = new Date(existing[idx].nextDueDate);
+      currentDue.setMonth(currentDue.getMonth() + 1);
+      existing[idx].nextDueDate = currentDue.toISOString().substring(0, 10);
+
+      localStorage.setItem('lidutech_installments', JSON.stringify(existing));
+    }
+    return existing;
   }
 };

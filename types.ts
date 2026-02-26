@@ -60,3 +60,24 @@ export interface Budget {
   userId?: string;
   monthYear: string; // Format: YYYY-MM
 }
+
+export interface InstallmentPayment {
+  id: string;
+  amount: number;
+  date: string; // YYYY-MM-DD
+  transactionId?: string; // Links to a Transaction record
+}
+
+export interface Installment {
+  id: string;
+  name: string;
+  totalDebt: number;
+  totalInstallments: number;
+  monthlyAmount: number; // Calculated: totalDebt / totalInstallments
+  source: string; // Bank/card name, e.g. "Nu Colombia"
+  category?: string;
+  startDate: string; // YYYY-MM-DD
+  nextDueDate: string; // YYYY-MM-DD
+  payments: InstallmentPayment[];
+  userId?: string;
+}

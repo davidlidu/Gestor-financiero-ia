@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Mic, Upload, X, Loader2, Check, Banknote, ArrowRightLeft } from 'lucide-react';
-import { Transaction, TransactionType, Category } from '../types'; // Asegúrate de importar Category
+import { Camera, Mic, Upload, X, Loader2, Check, Banknote, ArrowRightLeft, Plus, Circle } from 'lucide-react';
+import { Transaction, TransactionType, Category } from '../types';
 import { GeminiService } from '../services/geminiService';
+import { StorageService } from '../services/storageService';
 
 interface Props {
   isOpen: boolean;
@@ -11,6 +12,7 @@ interface Props {
   expenseCategories: Category[];
   incomeCategories: Category[];
   initialTab?: 'manual' | 'ocr' | 'voice';
+  onCategoryCreated?: (cat: Category) => void;
 }
 
 const getLocalDate = () => {
@@ -28,11 +30,17 @@ export const TransactionModal: React.FC<Props> = ({
   initialData,
   expenseCategories,
   incomeCategories,
-  initialTab: initialTabProp = 'manual'
+  initialTab: initialTabProp = 'manual',
+  onCategoryCreated
 }) => {
   const [activeTab, setActiveTab] = useState<'manual' | 'ocr' | 'voice'>('manual');
   const [loading, setLoading] = useState(false);
   const [displayAmount, setDisplayAmount] = useState('');
+
+  // Quick Add Category
+  const [showNewCat, setShowNewCat] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [savingCat, setSavingCat] = useState(false);
 
   // Form State
   const [amount, setAmount] = useState('');
@@ -334,16 +342,74 @@ export const TransactionModal: React.FC<Props> = ({
 
                   <div>
                     <label className="block text-xs font-medium text-slate-400 mb-1">Categoría</label>
-                    <select
-                      value={category}
-                      onChange={e => setCategory(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-primary-500"
-                    >
-                      {/* --- CORRECCIÓN CLAVE: Iteramos sobre los objetos y usamos c.name --- */}
-                      {(type === 'expense' ? expenseCategories : incomeCategories).map(c => (
-                        <option key={c.id} value={c.name}>{c.name}</option>
-                      ))}
-                    </select>
+                    {!showNewCat ? (
+                      <div className="flex gap-2">
+                        <select
+                          value={category}
+                          onChange={e => setCategory(e.target.value)}
+                          className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-primary-500"
+                        >
+                          {(type === 'expense' ? expenseCategories : incomeCategories).map(c => (
+                            <option key={c.id} value={c.name}>{c.name}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setShowNewCat(true)}
+                          className="px-3 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded-lg text-emerald-400 transition-colors flex-shrink-0"
+                          title="Agregar nueva categoría"
+                        >
+                          <Plus size={16} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-3 space-y-2">
+                        <input
+                          type="text"
+                          value={newCatName}
+                          onChange={e => setNewCatName(e.target.value)}
+                          placeholder={`Nueva categoría de ${type === 'expense' ? 'gasto' : 'ingreso'}...`}
+                          className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"
+                          autoFocus
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { setShowNewCat(false); setNewCatName(''); }}
+                            className="flex-1 px-3 py-1.5 text-xs text-slate-400 hover:text-white bg-slate-800 rounded-lg transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!newCatName.trim() || savingCat}
+                            onClick={async () => {
+                              if (!newCatName.trim()) return;
+                              setSavingCat(true);
+                              try {
+                                const created = await StorageService.createCategory({
+                                  name: newCatName.trim(),
+                                  icon: 'Circle',
+                                  type: type
+                                });
+                                onCategoryCreated?.(created);
+                                setCategory(created.name);
+                                setShowNewCat(false);
+                                setNewCatName('');
+                              } catch (err) {
+                                console.error('Error creating category:', err);
+                              } finally {
+                                setSavingCat(false);
+                              }
+                            }}
+                            className="flex-1 px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg disabled:opacity-50 transition-colors flex items-center justify-center gap-1"
+                          >
+                            {savingCat ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                            Crear
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div>

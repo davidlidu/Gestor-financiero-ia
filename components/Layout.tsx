@@ -4,6 +4,7 @@ import {
   ArrowRightLeft,
   PiggyBank,
   BarChart3,
+  CreditCard,
   Settings,
   LogOut,
   Menu,
@@ -17,8 +18,8 @@ interface LayoutProps {
   children: React.ReactNode;
   user: UserProfile | null;
   onLogout: () => void;
-  currentView: 'dashboard' | 'transactions' | 'savings' | 'reports' | 'settings';
-  onNavigate: (view: 'dashboard' | 'transactions' | 'savings' | 'reports' | 'settings') => void;
+  currentView: 'dashboard' | 'transactions' | 'savings' | 'reports' | 'installments' | 'settings';
+  onNavigate: (view: 'dashboard' | 'transactions' | 'savings' | 'reports' | 'installments' | 'settings') => void;
 }
 
 export function Layout({ children, user, onLogout, currentView, onNavigate }: LayoutProps) {
@@ -39,6 +40,7 @@ export function Layout({ children, user, onLogout, currentView, onNavigate }: La
     { id: 'transactions', label: 'Movimientos', icon: ArrowRightLeft },
     { id: 'savings', label: 'Metas', icon: PiggyBank },
     { id: 'reports', label: 'Reportes', icon: BarChart3 },
+    { id: 'installments', label: 'Cuotas', icon: CreditCard },
     { id: 'settings', label: 'Ajustes', icon: Settings },
   ] as const;
 
@@ -153,9 +155,8 @@ export function Layout({ children, user, onLogout, currentView, onNavigate }: La
         </div>
       </header>
 
-      {/* ============ MOBILE BOTTOM NAVIGATION BAR ============ */}
       <nav className="md:hidden fixed bottom-0 w-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-t border-slate-200/50 dark:border-slate-800/50 z-30 safe-area-bottom">
-        <div className="flex items-center justify-around h-16 px-2">
+        <div className="flex items-center justify-around h-14 px-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentView === item.id;
@@ -163,17 +164,17 @@ export function Layout({ children, user, onLogout, currentView, onNavigate }: La
               <button
                 key={item.id}
                 onClick={() => onNavigate(item.id)}
-                className={`flex flex-col items-center justify-center gap-0.5 py-1 px-3 rounded-xl transition-all duration-200 min-w-[60px] ${isActive
+                className={`flex flex-col items-center justify-center gap-0.5 py-1 px-1.5 rounded-lg transition-all duration-200 min-w-0 flex-1 ${isActive
                   ? 'text-emerald-500'
                   : 'text-slate-400 active:text-slate-200'
                   }`}
                 aria-label={item.label}
               >
-                <div className={`p-1.5 rounded-xl transition-all duration-200 ${isActive ? 'bg-emerald-500/10' : ''
+                <div className={`p-1 rounded-lg transition-all duration-200 ${isActive ? 'bg-emerald-500/10' : ''
                   }`}>
-                  <Icon size={22} strokeWidth={isActive ? 2.5 : 1.8} />
+                  <Icon size={20} strokeWidth={isActive ? 2.5 : 1.8} />
                 </div>
-                <span className={`text-[10px] font-medium transition-all ${isActive ? 'text-emerald-500 font-semibold' : 'text-slate-400'
+                <span className={`text-[9px] font-medium transition-all leading-tight ${isActive ? 'text-emerald-500 font-semibold' : 'text-slate-400'
                   }`}>
                   {item.label}
                 </span>
