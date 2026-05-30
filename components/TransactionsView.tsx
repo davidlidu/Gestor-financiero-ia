@@ -47,7 +47,17 @@ const groupTransactionsByDate = (transactions: Transaction[]): { label: string; 
         groups.get(label)!.push(t);
     }
 
-    return Array.from(groups.entries()).map(([label, items]) => ({ label, items }));
+    return Array.from(groups.entries()).map(([label, items]) => ({
+        label,
+        items: [...items].sort((a, b) => {
+            const dateDiff = b.date.localeCompare(a.date);
+            if (dateDiff !== 0) return dateDiff;
+            // Same date: sort by id descending (most recently inserted first)
+            const aId = parseInt(a.id) || 0;
+            const bId = parseInt(b.id) || 0;
+            return bId - aId || b.id.localeCompare(a.id);
+        }),
+    }));
 };
 
 // --- Method badge component ---
@@ -79,12 +89,12 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     return (
         <div className="space-y-4">
             {/* Action Bar */}
-            <div className="flex justify-between items-center">
+            <div className="flex flex-wrap justify-between items-center gap-2">
                 <div>
                     <h3 className="text-lg font-bold text-white">Historial</h3>
                     <p className="text-xs text-slate-500">{filteredTransactions.length} movimientos</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                     <button
                         onClick={onExportCSV}
                         className="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-3 py-2 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-colors"
@@ -96,7 +106,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                         onClick={onOpenTransferModal}
                         className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-3 py-2 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-colors"
                     >
-                        <ArrowRightLeft size={14} /> A Metas
+                        <ArrowRightLeft size={14} /> Transferir
                     </button>
                 </div>
             </div>

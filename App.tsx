@@ -274,19 +274,26 @@ function App() {
 
         try {
             // 2. Lógica de Reversión de Ahorro
-            // Si es un gasto de categoría "Ahorro", intentamos descontarlo de la meta
-            if (txToDelete.category === 'Ahorro' && txToDelete.description.startsWith('Transferencia a: ')) {
-                const goalName = txToDelete.description.replace('Transferencia a: ', '').trim();
-                const goal = savings.find(g => g.name === goalName);
+            if (txToDelete.category === 'Ahorro') {
+                let goalName: string | null = null;
+                let delta = 0;
 
-                if (goal) {
-                    // Restamos el monto de la meta porque estamos borrando el ingreso a ella
-                    // (Opcional: validar que no quede negativo)
-                    const newCurrentAmount = Math.max(0, goal.currentAmount - txToDelete.amount);
+                if (txToDelete.description.startsWith('Transferencia a: ')) {
+                    goalName = txToDelete.description.replace('Transferencia a: ', '').trim();
+                    delta = -txToDelete.amount; // Se restituye quitando lo que se transfirió
+                } else if (txToDelete.description.startsWith('Retiro de: ')) {
+                    goalName = txToDelete.description.replace('Retiro de: ', '').trim();
+                    delta = txToDelete.amount; // Se restituye sumando lo que se retiró
+                }
 
-                    const updatedGoal = { ...goal, currentAmount: newCurrentAmount };
-                    const updatedSavingsList = await StorageService.saveSavingsGoal(updatedGoal);
-                    setSavings(updatedSavingsList);
+                if (goalName) {
+                    const goal = savings.find(g => g.name === goalName);
+                    if (goal) {
+                        const newCurrentAmount = Math.max(0, goal.currentAmount + delta);
+                        const updatedGoal = { ...goal, currentAmount: newCurrentAmount };
+                        const updatedSavingsList = await StorageService.saveSavingsGoal(updatedGoal);
+                        setSavings(updatedSavingsList);
+                    }
                 }
             }
 
@@ -351,7 +358,7 @@ function App() {
             amount: amount,
             category: 'Ahorro',
             description: `Transferencia a: ${goal.name}`,
-            date: new Date().toISOString().split('T')[0], // O usa getLocalDate() si ya la tienes
+            date: new Date().toISOString().split('T')[0],
             type: 'expense',
             method: 'manual',
             paymentMethod: 'transfer',
@@ -359,7 +366,6 @@ function App() {
         };
 
         try {
-            // AWAIT es clave aquí para evitar la pantalla blanca
             const updatedTxList = await StorageService.saveTransaction(newTx);
             setTransactions(updatedTxList);
 
@@ -371,11 +377,46 @@ function App() {
             // 3. Cerrar modal solo al terminar todo
             setIsTransferModalOpen(false);
 
-            toast.success('Transferencia exitosa', `$${amount.toLocaleString('es-CO')} transferidos correctamente.`);
+            toast.success('Transferencia exitosa', `$${amount.toLocaleString('es-CO')} transferidos a "${goal.name}".`);
 
         } catch (error) {
             console.error("Error en transferencia:", error);
             toast.error('Error', 'Hubo un error al realizar la transferencia.');
+        }
+    };
+
+    const handleTransferFromSavings = async (goalId: string, amount: number) => {
+        const goal = savings.find(s => s.id === goalId);
+        if (!goal) return;
+
+        const newTx: Transaction = {
+            id: '',
+            amount: amount,
+            category: 'Ahorro',
+            description: `Retiro de: ${goal.name}`,
+            date: new Date().toISOString().split('T')[0],
+            type: 'income',
+            method: 'manual',
+            paymentMethod: 'transfer',
+            userId: user?.id
+        };
+
+        try {
+            const updatedTxList = await StorageService.saveTransaction(newTx);
+            setTransactions(updatedTxList);
+
+            const newAmount = Math.max(0, goal.currentAmount - amount);
+            const updatedGoal = { ...goal, currentAmount: newAmount };
+            const updatedSavingsList = await StorageService.saveSavingsGoal(updatedGoal);
+            setSavings(updatedSavingsList);
+
+            setIsTransferModalOpen(false);
+
+            toast.success('Retiro exitoso', `$${amount.toLocaleString('es-CO')} retirados de "${goal.name}" a la billetera.`);
+
+        } catch (error) {
+            console.error("Error en retiro de ahorro:", error);
+            toast.error('Error', 'Hubo un error al retirar los fondos.');
         }
     };
     // --- Export Logic ---
@@ -425,15 +466,19 @@ function App() {
             return matches;
         });
 
-        // 2. Luego ordenamos (NUEVA LÓGICA)
+        // 2. Luego ordenamos
         return filtered.sort((a, b) => {
             if (sortOrder === 'amount_desc') {
-                return b.amount - a.amount; // Mayor a Menor
+                return b.amount - a.amount;
             } else if (sortOrder === 'amount_asc') {
-                return a.amount - b.amount; // Menor a Mayor
+                return a.amount - b.amount;
             } else {
-                // Por defecto: Fecha más reciente primero (orden descendente de fecha)
-                return b.date.localeCompare(a.date);
+                // Fecha más reciente primero; mismo día → id mayor primero (inserción más reciente)
+                const dateDiff = b.date.localeCompare(a.date);
+                if (dateDiff !== 0) return dateDiff;
+                const aId = parseInt(a.id) || 0;
+                const bId = parseInt(b.id) || 0;
+                return bId - aId || b.id.localeCompare(a.id);
             }
         });
     }, [transactions, filterStartDate, filterEndDate, filterCategory, filterType, sortOrder, filterSearch]); // <--- Agregamos sortOrder y filterSearch aquí
@@ -1032,7 +1077,8 @@ function App() {
                 onClose={() => setIsTransferModalOpen(false)}
                 savingsGoals={savings}
                 onTransfer={handleTransferToSavings}
-                currentBalance={dashboardData.balance} // <--- NUEVA PROP: Pasamos el saldo
+                onTransferFromSavings={handleTransferFromSavings}
+                currentBalance={dashboardData.balance}
             />
             {/* --- MODAL HISTORIAL DE AHORROS --- */}
             {

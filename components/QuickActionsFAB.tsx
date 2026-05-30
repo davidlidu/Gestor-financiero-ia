@@ -39,7 +39,7 @@ export const QuickActionsFAB: React.FC<QuickActionsFABProps> = ({ onManual, onSc
             )}
 
             {/* Action items - float above FAB */}
-            <div className="fixed bottom-24 right-6 lg:bottom-28 lg:right-10 z-50 flex flex-col-reverse gap-3 items-end">
+            <div className="fixed bottom-36 right-6 lg:bottom-28 lg:right-10 z-50 flex flex-col-reverse gap-3 items-end">
                 {actions.map((action) => {
                     const Icon = action.icon;
                     return (
@@ -70,7 +70,7 @@ export const QuickActionsFAB: React.FC<QuickActionsFABProps> = ({ onManual, onSc
             {/* Main FAB button */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className={`fixed bottom-6 right-6 lg:bottom-10 lg:right-10 z-50 w-14 h-14 lg:w-16 lg:h-16 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 ${isOpen
+                className={`fixed bottom-20 right-6 lg:bottom-10 lg:right-10 z-50 w-14 h-14 lg:w-16 lg:h-16 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 ${isOpen
                         ? 'bg-slate-700 shadow-slate-500/20 rotate-45'
                         : 'bg-primary-600 hover:bg-primary-500 shadow-primary-500/40 rotate-0'
                     }`}
