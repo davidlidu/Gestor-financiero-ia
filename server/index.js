@@ -61,8 +61,18 @@ const initDB = async () => {
         type VARCHAR(20) CHECK (type IN ('income', 'expense')),
         method VARCHAR(50), -- 'manual', 'ocr', 'voice'
         payment_method VARCHAR(50), -- 'cash', 'transfer'
+        external_ref VARCHAR(255), -- referencia externa (ej: id de pago de SmartBilling) para idempotencia
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+
+    // Migración: asegurar columna external_ref en instalaciones previas
+    await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS external_ref VARCHAR(255);`);
+    // Índice único parcial: un mismo pago externo no puede crear dos ingresos para el mismo usuario
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_transactions_external_ref
+      ON transactions (user_id, external_ref)
+      WHERE external_ref IS NOT NULL;
     `);
 
     // Tabla Ahorros
@@ -127,6 +137,37 @@ const authenticateToken = (req, res, next) => {
     req.user = user;
     next();
   });
+};
+
+// --- MIDDLEWARE DE AUTENTICACIÓN DE SERVICIO (API KEY) ---
+// Para integraciones máquina-a-máquina (ej: SmartBilling -> Gestor).
+const authenticateService = (req, res, next) => {
+  const provided = req.headers['x-api-key'];
+  const expected = process.env.SERVICE_API_KEY;
+  if (!expected) {
+    return res.status(503).json({ error: 'Integración no configurada (falta SERVICE_API_KEY).' });
+  }
+  if (!provided || provided !== expected) {
+    return res.sendStatus(401);
+  }
+  next();
+};
+
+// Resuelve el id del usuario del Gestor que recibe los ingresos de facturación.
+// Configurable por email (BILLING_INCOME_USER_EMAIL) o por id (BILLING_INCOME_USER_ID).
+let cachedBillingUserId = null;
+const resolveBillingUserId = async () => {
+  if (cachedBillingUserId) return cachedBillingUserId;
+  if (process.env.BILLING_INCOME_USER_ID) {
+    cachedBillingUserId = parseInt(process.env.BILLING_INCOME_USER_ID, 10);
+    return cachedBillingUserId;
+  }
+  const email = process.env.BILLING_INCOME_USER_EMAIL;
+  if (!email) return null;
+  const result = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+  if (result.rows.length === 0) return null;
+  cachedBillingUserId = result.rows[0].id;
+  return cachedBillingUserId;
 };
 
 // ================= RUTAS DE AUTENTICACIÓN =================
@@ -323,6 +364,56 @@ app.post('/api/transactions', authenticateToken, async (req, res) => {
   }
 });
 
+// ================= INTEGRACIÓN: ABONOS DE FACTURACIÓN (SmartBilling) =================
+// Registra un abono de una factura como INGRESO en el Gestor.
+// Autenticación por API key de servicio (header x-api-key). Idempotente por external_ref.
+app.post('/api/integrations/billing-payment', authenticateService, async (req, res) => {
+  try {
+    const { amount, date, clientName, reference, description, invoiceNumber, paymentMethod } = req.body;
+
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({ error: 'amount debe ser un número positivo.' });
+    }
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'date es requerido en formato YYYY-MM-DD.' });
+    }
+
+    const userId = await resolveBillingUserId();
+    if (!userId) {
+      return res.status(503).json({ error: 'Usuario de facturación no configurado (BILLING_INCOME_USER_EMAIL / BILLING_INCOME_USER_ID).' });
+    }
+
+    // Descripción legible
+    const parts = ['Abono factura'];
+    if (invoiceNumber) parts.push(`#${invoiceNumber}`);
+    if (clientName) parts.push(`- ${clientName}`);
+    const finalDescription = description || parts.join(' ');
+
+    // paymentMethod del Gestor solo acepta 'cash' | 'transfer'
+    const pm = paymentMethod === 'cash' ? 'cash' : 'transfer';
+
+    const result = await pool.query(
+      `INSERT INTO transactions (user_id, amount, description, date, category, type, method, payment_method, external_ref)
+       VALUES ($1, $2, $3, $4, $5, 'income', 'manual', $6, $7)
+       ON CONFLICT (user_id, external_ref) WHERE external_ref IS NOT NULL
+       DO NOTHING
+       RETURNING id`,
+      [userId, parsedAmount, finalDescription, date, 'Facturación', pm, reference || null]
+    );
+
+    if (result.rows.length === 0) {
+      // Ya existía un ingreso para esta referencia -> idempotente
+      return res.status(200).json({ success: true, duplicated: true });
+    }
+
+    res.status(201).json({ success: true, id: result.rows[0].id.toString() });
+  } catch (err) {
+    console.error('[billing-payment] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.put('/api/transactions/:id', authenticateToken, async (req, res) => {
   try {
     const { amount, description, date, category, type, method, paymentMethod } = req.body;
@@ -501,6 +592,7 @@ const DEFAULT_EXPENSE_CATEGORIES = [
   const DEFAULT_INCOME_CATEGORIES = [
     { name: 'Salario', icon: 'Briefcase', type: 'income' },
     { name: 'Freelance', icon: 'Laptop', type: 'income' },
+    { name: 'Facturación', icon: 'FileText', type: 'income' },
     { name: 'Regalos', icon: 'Gift', type: 'income' },
     { name: 'Inversiones', icon: 'TrendingUp', type: 'income' }
   ];
