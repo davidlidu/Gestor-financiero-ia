@@ -11,6 +11,7 @@ import { Layout } from './components/Layout';
 import { BudgetTracker } from './components/BudgetTracker';
 import { Auth } from './components/Auth';
 import { TransactionsView } from './components/TransactionsView';
+import { CategoryFilter } from './components/CategoryFilter';
 import { SettingsView } from './components/SettingsView';
 import { ReportsView } from './components/ReportsView';
 import { InstallmentsView } from './components/InstallmentsView';
@@ -100,7 +101,7 @@ function App() {
     const currentMonthRange = getMonthRange(0);
     const [filterStartDate, setFilterStartDate] = useState(currentMonthRange.start);
     const [filterEndDate, setFilterEndDate] = useState(currentMonthRange.end);
-    const [filterCategory, setFilterCategory] = useState('');
+    const [filterCategory, setFilterCategory] = useState<string[]>([]);
     const [filterSearch, setFilterSearch] = useState('');
     const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
     const [sortOrder, setSortOrder] = useState<'date' | 'amount_asc' | 'amount_desc'>('date');
@@ -460,7 +461,7 @@ function App() {
             let matches = true;
             if (filterStartDate && t.date < filterStartDate) matches = false;
             if (filterEndDate && t.date > filterEndDate) matches = false;
-            if (filterCategory && t.category !== filterCategory) matches = false;
+            if (filterCategory.length > 0 && !filterCategory.includes(t.category)) matches = false;
             if (filterType !== 'all' && t.type !== filterType) matches = false;
             if (filterSearch && !t.description.toLowerCase().includes(filterSearch.toLowerCase()) && !t.category.toLowerCase().includes(filterSearch.toLowerCase())) matches = false;
             return matches;
@@ -710,15 +711,12 @@ function App() {
                                     <option value="expense">Gastos</option>
                                 </select>
 
-                                <select
-                                    value={filterCategory}
-                                    onChange={(e) => setFilterCategory(e.target.value)}
-                                    className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-xs text-white w-full pr-8"
-                                >
-                                    <option value="">Todas las Categorías</option>
-                                    <optgroup label="Gastos">{expenseCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</optgroup>
-                                    <optgroup label="Ingresos">{incomeCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</optgroup>
-                                </select>
+                                <CategoryFilter
+                                    expenseCategories={expenseCategories}
+                                    incomeCategories={incomeCategories}
+                                    selected={filterCategory}
+                                    onChange={setFilterCategory}
+                                />
 
                                 <select
                                     value={sortOrder}
@@ -731,9 +729,9 @@ function App() {
                                 </select>
                             </div>
 
-                            {(filterCategory || filterType !== 'all' || sortOrder !== 'date' || filterSearch) && (
+                            {(filterCategory.length > 0 || filterType !== 'all' || sortOrder !== 'date' || filterSearch) && (
                                 <button
-                                    onClick={() => { handlePeriodChange('current_month'); setFilterCategory(''); setFilterType('all'); setSortOrder('date'); setFilterSearch(''); }}
+                                    onClick={() => { handlePeriodChange('current_month'); setFilterCategory([]); setFilterType('all'); setSortOrder('date'); setFilterSearch(''); }}
                                     className="mt-3 w-full sm:w-auto bg-slate-700/50 hover:bg-slate-700 text-xs text-slate-300 hover:text-white flex items-center justify-center gap-2 py-2 px-4 rounded-lg transition-colors border border-slate-600/50"
                                 >
                                     <X size={14} /> Limpiar Filtros
@@ -760,7 +758,7 @@ function App() {
 
                             {/* Income Card */}
                             <div
-                                onClick={() => { setView('transactions'); setFilterType('income'); setFilterCategory(''); }}
+                                onClick={() => { setView('transactions'); setFilterType('income'); setFilterCategory([]); }}
                                 className="bg-slate-800/80 rounded-2xl p-4 md:p-5 border border-slate-700/80 flex flex-col justify-between cursor-pointer hover:border-emerald-500/30 transition-all group"
                             >
                                 <div className="flex justify-between items-center mb-2">
@@ -778,7 +776,7 @@ function App() {
 
                             {/* Expense Card */}
                             <div
-                                onClick={() => { setView('transactions'); setFilterType('expense'); setFilterCategory(''); }}
+                                onClick={() => { setView('transactions'); setFilterType('expense'); setFilterCategory([]); }}
                                 className="bg-slate-800/80 rounded-2xl p-4 md:p-5 border border-slate-700/80 flex flex-col justify-between cursor-pointer hover:border-red-500/30 transition-all group"
                             >
                                 <div className="flex justify-between items-center mb-2">

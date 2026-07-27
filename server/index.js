@@ -170,6 +170,25 @@ const resolveBillingUserId = async () => {
   return cachedBillingUserId;
 };
 
+// Garantiza que exista una categoría de ingreso con el nombre del cliente.
+// Si no existe (ni como default ni del usuario), la crea. Devuelve el nombre a usar como categoría.
+const ensureIncomeCategory = async (userId, clientName) => {
+  const name = (clientName || '').trim() || 'Facturación';
+  const existing = await pool.query(
+    `SELECT 1 FROM categories
+     WHERE name = $1 AND type = 'income' AND (is_default = TRUE OR user_id = $2)
+     LIMIT 1`,
+    [name, userId]
+  );
+  if (existing.rows.length === 0) {
+    await pool.query(
+      "INSERT INTO categories (user_id, name, icon, type, is_default) VALUES ($1, $2, 'User', 'income', FALSE)",
+      [userId, name]
+    );
+  }
+  return name;
+};
+
 // ================= RUTAS DE AUTENTICACIÓN =================
 
 // 1. Registro
@@ -393,13 +412,16 @@ app.post('/api/integrations/billing-payment', authenticateService, async (req, r
     // paymentMethod del Gestor solo acepta 'cash' | 'transfer'
     const pm = paymentMethod === 'cash' ? 'cash' : 'transfer';
 
+    // Cada cliente es una categoría de ingreso (se crea si no existe).
+    const category = await ensureIncomeCategory(userId, clientName);
+
     const result = await pool.query(
       `INSERT INTO transactions (user_id, amount, description, date, category, type, method, payment_method, external_ref)
        VALUES ($1, $2, $3, $4, $5, 'income', 'manual', $6, $7)
        ON CONFLICT (user_id, external_ref) WHERE external_ref IS NOT NULL
        DO NOTHING
        RETURNING id`,
-      [userId, parsedAmount, finalDescription, date, 'Facturación', pm, reference || null]
+      [userId, parsedAmount, finalDescription, date, category, pm, reference || null]
     );
 
     if (result.rows.length === 0) {
@@ -410,6 +432,78 @@ app.post('/api/integrations/billing-payment', authenticateService, async (req, r
     res.status(201).json({ success: true, id: result.rows[0].id.toString() });
   } catch (err) {
     console.error('[billing-payment] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Editar un abono ya sincronizado. Actualiza el ingreso por su external_ref.
+// Si no existía (pago previo a la integración), lo crea (upsert).
+app.put('/api/integrations/billing-payment/:reference', authenticateService, async (req, res) => {
+  try {
+    const { reference } = req.params;
+    const { amount, date, clientName, description, invoiceNumber, paymentMethod } = req.body;
+
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({ error: 'amount debe ser un número positivo.' });
+    }
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'date es requerido en formato YYYY-MM-DD.' });
+    }
+
+    const userId = await resolveBillingUserId();
+    if (!userId) {
+      return res.status(503).json({ error: 'Usuario de facturación no configurado.' });
+    }
+
+    const parts = ['Abono factura'];
+    if (invoiceNumber) parts.push(`#${invoiceNumber}`);
+    if (clientName) parts.push(`- ${clientName}`);
+    const finalDescription = description || parts.join(' ');
+    const pm = paymentMethod === 'cash' ? 'cash' : 'transfer';
+    const category = await ensureIncomeCategory(userId, clientName);
+
+    const upd = await pool.query(
+      `UPDATE transactions
+         SET amount = $1, date = $2, description = $3, payment_method = $4, category = $5
+       WHERE user_id = $6 AND external_ref = $7
+       RETURNING id`,
+      [parsedAmount, date, finalDescription, pm, category, userId, reference]
+    );
+
+    if (upd.rows.length === 0) {
+      // No existía -> crear
+      const ins = await pool.query(
+        `INSERT INTO transactions (user_id, amount, description, date, category, type, method, payment_method, external_ref)
+         VALUES ($1, $2, $3, $4, $5, 'income', 'manual', $6, $7)
+         RETURNING id`,
+        [userId, parsedAmount, finalDescription, date, category, pm, reference]
+      );
+      return res.status(201).json({ success: true, created: true, id: ins.rows[0].id.toString() });
+    }
+
+    res.json({ success: true, id: upd.rows[0].id.toString() });
+  } catch (err) {
+    console.error('[billing-payment:update] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Eliminar el ingreso asociado a un abono. Idempotente.
+app.delete('/api/integrations/billing-payment/:reference', authenticateService, async (req, res) => {
+  try {
+    const { reference } = req.params;
+    const userId = await resolveBillingUserId();
+    if (!userId) {
+      return res.status(503).json({ error: 'Usuario de facturación no configurado.' });
+    }
+    await pool.query(
+      'DELETE FROM transactions WHERE user_id = $1 AND external_ref = $2',
+      [userId, reference]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[billing-payment:delete] Error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
