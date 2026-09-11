@@ -51,8 +51,9 @@ function App() {
     const [user, setUser] = useState<UserProfile | null>(null);
     const [authView, setAuthView] = useState<AuthState>({ view: 'login', email: '' });
     const [authLoading, setAuthLoading] = useState(true);
-    // Controla si se muestra la presentación pública (landing) o el formulario de acceso
-    const [showAuth, setShowAuth] = useState(false);
+    // Enrutamiento simple por URL: la raíz "/" es la landing pública; el formulario vive en "/login".
+    const [path, setPath] = useState(typeof window !== 'undefined' ? window.location.pathname : '/');
+    const navigate = (to: string) => { window.history.pushState({}, '', to); setPath(to); };
 
     // Auth Form State
     const [emailInput, setEmailInput] = useState('');
@@ -143,6 +144,13 @@ function App() {
         checkSession();
     }, []);
 
+    // Sincroniza la ruta con los botones atrás/adelante del navegador
+    useEffect(() => {
+        const onPop = () => setPath(window.location.pathname);
+        window.addEventListener('popstate', onPop);
+        return () => window.removeEventListener('popstate', onPop);
+    }, []);
+
     // Manejo del retorno tras vincular Google (?gmail=linked | error)
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -223,6 +231,7 @@ function App() {
             const userProfile = await AuthService.verify2FA(authView.tempToken, otpInput, rememberMe);
             if (userProfile) {
                 setUser(userProfile);
+                if (window.location.pathname !== '/') navigate('/'); // limpia la URL /login
 
                 // 1. Usamos 'await' porque getTransactions va al servidor
                 const existingTx = await StorageService.getTransactions();
@@ -604,14 +613,16 @@ function App() {
     );
 
     if (!user) {
-        // Página principal pública: explica el propósito de la app (homepage para Google/SEO).
-        // Al pulsar "Iniciar sesión" / "Crear cuenta" se muestra el formulario de acceso.
-        if (!showAuth) {
+        // El formulario de acceso solo se muestra en la ruta "/login".
+        // La raíz "/" (y cualquier otra ruta) muestra SIEMPRE la landing pública,
+        // así Google nunca ve el formulario en la página principal.
+        const onLoginRoute = path.replace(/\/+$/, '') === '/login';
+        if (!onLoginRoute) {
             return (
                 <LandingHome
                     onEnter={(v) => {
                         if (v) setAuthView({ view: v, email: '' });
-                        setShowAuth(true);
+                        navigate('/login');
                     }}
                 />
             );
@@ -619,7 +630,7 @@ function App() {
         return (
             <div className="relative">
                 <button
-                    onClick={() => setShowAuth(false)}
+                    onClick={() => navigate('/')}
                     className="absolute top-4 left-4 z-10 text-sm text-slate-400 hover:text-white flex items-center gap-1"
                 >
                     <ChevronLeft size={16} /> Volver al inicio
