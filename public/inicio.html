@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DeerSystems Financial IA — Gestor de finanzas personales con IA</title>
+  <meta name="description" content="DeerSystems Financial IA es una app de Lidutech para gestionar tus ingresos, gastos, ahorros y presupuestos, con importación asistida por IA desde tus notificaciones bancarias de Gmail." />
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --border: #334155;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #10b981;
+      --link: #34d399;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.65;
+    }
+    a { color: var(--link); text-decoration: none; }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+
+    /* Nav */
+    nav { display: flex; align-items: center; justify-content: space-between; padding: 20px 0; flex-wrap: wrap; gap: 12px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .logo {
+      width: 44px; height: 44px; border-radius: 12px;
+      background: linear-gradient(135deg, #34d399, #0d9488);
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-weight: 700; font-size: 18px; box-shadow: 0 8px 20px rgba(16,185,129,.25);
+    }
+    .brand-name { font-weight: 700; font-size: 16px; line-height: 1.1; }
+    .brand-sub { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
+    .nav-links { display: flex; align-items: center; gap: 18px; font-size: 14px; }
+    .btn {
+      background: linear-gradient(135deg, #10b981, #0d9488); color: #fff; font-weight: 600;
+      padding: 10px 18px; border-radius: 10px; font-size: 14px; display: inline-block;
+    }
+    .btn.secondary { background: var(--panel); border: 1px solid var(--border); }
+
+    /* Hero */
+    .hero { text-align: center; padding: 60px 0 40px; }
+    .hero h1 { font-size: 40px; line-height: 1.1; margin: 0 0 16px; }
+    .hero h1 .grad { background: linear-gradient(135deg, #34d399, #2dd4bf); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .hero p { font-size: 18px; color: var(--muted); max-width: 640px; margin: 0 auto 28px; }
+    .hero .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+    /* Sections */
+    section { padding: 40px 0; }
+    h2 { font-size: 26px; text-align: center; margin: 0 0 8px; }
+    .section-sub { text-align: center; color: var(--muted); max-width: 620px; margin: 0 auto 32px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 22px; }
+    .card .ic { font-size: 24px; margin-bottom: 10px; }
+    .card h3 { margin: 0 0 6px; font-size: 17px; color: #fff; }
+    .card p { margin: 0; color: var(--muted); font-size: 14px; }
+
+    .integration { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 28px; }
+    .integration h2 { text-align: left; }
+    .integration ul { color: var(--muted); font-size: 15px; padding-left: 20px; }
+    .integration li { margin-bottom: 8px; }
+
+    footer { border-top: 1px solid var(--border); margin-top: 40px; padding: 28px 0 60px; color: var(--muted); font-size: 13px; text-align: center; }
+    footer a { margin: 0 8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <nav>
+      <div class="brand">
+        <div class="logo">DS</div>
+        <div>
+          <div class="brand-name">DeerSystems Financial IA</div>
+          <div class="brand-sub">Lidutech</div>
+        </div>
+      </div>
+      <div class="nav-links">
+        <a href="/privacidad.html">Política de privacidad</a>
+        <a class="btn" href="/">Iniciar sesión</a>
+      </div>
+    </nav>
+
+    <header class="hero">
+      <h1>Controla tus finanzas personales<br /><span class="grad">con inteligencia artificial</span></h1>
+      <p>
+        DeerSystems Financial IA es una aplicación web de Lidutech que te ayuda a registrar y entender
+        tus ingresos y gastos, fijar metas de ahorro, controlar presupuestos y cuotas, y visualizar
+        reportes claros de tu dinero — todo en un solo lugar.
+      </p>
+      <div class="cta">
+        <a class="btn" href="/">Entrar a la app</a>
+        <a class="btn secondary" href="#funciones">Ver qué hace</a>
+      </div>
+    </header>
+
+    <section id="funciones">
+      <h2>¿Qué puedes hacer?</h2>
+      <p class="section-sub">Una herramienta completa para tu día a día financiero.</p>
+      <div class="grid">
+        <div class="card"><div class="ic">💸</div><h3>Ingresos y gastos</h3><p>Registra tus movimientos, clasifícalos por categorías y consulta tu balance al instante.</p></div>
+        <div class="card"><div class="ic">🎯</div><h3>Metas de ahorro</h3><p>Crea metas, haz aportes y sigue tu progreso hacia cada objetivo.</p></div>
+        <div class="card"><div class="ic">📊</div><h3>Presupuestos y reportes</h3><p>Define presupuestos mensuales y revisa reportes visuales de tus finanzas.</p></div>
+        <div class="card"><div class="ic">🧾</div><h3>Cuotas y créditos</h3><p>Lleva el control de tus pagos a cuotas y sus fechas de vencimiento.</p></div>
+        <div class="card"><div class="ic">📷</div><h3>Escaneo con IA</h3><p>Toma una foto de un recibo o usa tu voz y la IA extrae el movimiento por ti.</p></div>
+        <div class="card"><div class="ic">📥</div><h3>Importación desde Gmail</h3><p>Detecta movimientos en las notificaciones de tus bancos y los importa con tu revisión.</p></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="integration">
+        <h2>Integración con Google (Gmail)</h2>
+        <p style="color:var(--muted)">
+          De forma <strong>opcional</strong>, puedes vincular tu cuenta de Google para agilizar el registro de
+          tus movimientos. El propósito de esta integración es exclusivamente el siguiente:
+        </p>
+        <ul>
+          <li>Leer, con permiso de <strong>solo lectura</strong> (<code>gmail.readonly</code>), los correos de
+            notificación de tus bancos para detectar compras, pagos, transferencias y retiros.</li>
+          <li>Proponerte esos movimientos como sugerencias que <strong>tú revisas, editas y decides importar</strong>
+            a tu cuenta dentro de la app.</li>
+          <li>La app <strong>nunca</strong> envía, modifica ni elimina correos, y puedes desvincular tu cuenta
+            cuando quieras desde los Ajustes.</li>
+        </ul>
+        <p style="color:var(--muted)">
+          El uso de la información obtenida de las APIs de Google se ajusta a la
+          <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Política de Datos de Usuario de los Servicios de API de Google</a>,
+          incluidos sus requisitos de Uso Limitado. Consulta más detalles en nuestra
+          <a href="/privacidad.html">Política de privacidad</a>.
+        </p>
+      </div>
+    </section>
+
+    <footer>
+      <div>
+        <a href="/privacidad.html">Política de privacidad</a> ·
+        <a href="mailto:soporte@lidutech.net">soporte@lidutech.net</a> ·
+        <a href="/">Iniciar sesión</a>
+      </div>
+      <p>© 2026 Lidutech · DeerSystems Financial IA. Todos los derechos reservados.</p>
+    </footer>
+  </div>
+</body>
+</html>
