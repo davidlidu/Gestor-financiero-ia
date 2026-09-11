@@ -90,7 +90,10 @@ export const TransactionModal: React.FC<Props> = ({
         setDescription(initialData.description);
         setCategory(initialData.category);
         setType(initialData.type);
-        setDate(initialData.date);
+        // La API puede devolver la fecha como ISO completo (YYYY-MM-DDTHH:mm:ss.sssZ).
+        // El <input type="date"> solo acepta YYYY-MM-DD, así que la normalizamos
+        // para que conserve la fecha original en lugar de reiniciarse.
+        setDate(initialData.date ? String(initialData.date).split('T')[0] : getLocalDate());
         setPaymentMethod(initialData.paymentMethod || 'transfer');
         setActiveTab('manual');
       } else {

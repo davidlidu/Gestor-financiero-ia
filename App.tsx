@@ -140,6 +140,23 @@ function App() {
         checkSession();
     }, []);
 
+    // Manejo del retorno tras vincular Google (?gmail=linked | error)
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const gmail = params.get('gmail');
+        if (!gmail) return;
+        if (gmail === 'linked') {
+            toast.success('Gmail vinculado', 'Ya puedes importar movimientos desde Ajustes.');
+            setView('settings');
+        } else if (gmail === 'error') {
+            toast.error('Error', 'No se pudo vincular tu cuenta de Google. Intenta de nuevo.');
+        }
+        // Limpia el parámetro de la URL
+        params.delete('gmail');
+        const clean = window.location.pathname + (params.toString() ? `?${params}` : '');
+        window.history.replaceState({}, '', clean);
+    }, []);
+
     const checkSession = async () => {
         const sessionUser = await AuthService.getSession();
         if (sessionUser) {
@@ -1052,6 +1069,7 @@ function App() {
                         onUpdateUser={setUser}
                         categories={categories}
                         onUpdateCategories={setCategories}
+                        onDataImported={loadUserData}
                     />
                 )}
 

@@ -101,6 +101,19 @@ const initDB = async () => {
         );
       `);
 
+    // Tabla Cuentas de Google vinculadas (para importar movimientos desde Gmail)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS google_accounts (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        email VARCHAR(255),
+        access_token TEXT,
+        refresh_token TEXT,
+        token_expiry TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
       // Buscamos si ya hay categorías por defecto insertadas
     const catCheck = await pool.query("SELECT count(*) FROM categories WHERE is_default = TRUE");
     
@@ -187,6 +200,126 @@ const ensureIncomeCategory = async (userId, clientName) => {
     );
   }
   return name;
+};
+
+// ================= INTEGRACIÓN GOOGLE / GMAIL =================
+// Config leída desde variables de entorno (ver guía al final del chat).
+const GOOGLE = {
+  clientId: process.env.GOOGLE_CLIENT_ID,
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  // URL del backend que recibe el callback de Google (debe coincidir EXACTO con la de Google Cloud).
+  redirectUri: process.env.GOOGLE_REDIRECT_URI,
+  // URL del frontend a donde volver tras vincular.
+  appUrl: process.env.APP_URL || 'https://finanzas.lidutech.net',
+  scopes: [
+    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/userinfo.email',
+  ],
+};
+
+// Remitentes/dominios de bancos a filtrar (separados por coma). Configurable por env.
+const BANK_SENDERS = (process.env.BANK_EMAIL_SENDERS || 'bancolombia.com.co,nequi.com.co')
+  .split(',').map(s => s.trim()).filter(Boolean);
+
+const googleConfigured = () => !!(GOOGLE.clientId && GOOGLE.clientSecret && GOOGLE.redirectUri);
+
+// Intercambia un authorization code por tokens.
+const exchangeCodeForTokens = async (code) => {
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code,
+      client_id: GOOGLE.clientId,
+      client_secret: GOOGLE.clientSecret,
+      redirect_uri: GOOGLE.redirectUri,
+      grant_type: 'authorization_code',
+    }),
+  });
+  if (!res.ok) throw new Error('Error intercambiando code: ' + (await res.text()));
+  return res.json(); // { access_token, refresh_token, expires_in, ... }
+};
+
+// Devuelve un access_token válido para el usuario, refrescándolo si expiró.
+const getGoogleAccessToken = async (userId) => {
+  const { rows } = await pool.query('SELECT * FROM google_accounts WHERE user_id = $1', [userId]);
+  if (rows.length === 0) throw new Error('Cuenta de Google no vinculada.');
+  const acc = rows[0];
+
+  const stillValid = acc.token_expiry && new Date(acc.token_expiry).getTime() - 60000 > Date.now();
+  if (acc.access_token && stillValid) return acc.access_token;
+
+  if (!acc.refresh_token) throw new Error('No hay refresh_token; vuelve a vincular la cuenta.');
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: GOOGLE.clientId,
+      client_secret: GOOGLE.clientSecret,
+      refresh_token: acc.refresh_token,
+      grant_type: 'refresh_token',
+    }),
+  });
+  if (!res.ok) throw new Error('Error refrescando token: ' + (await res.text()));
+  const data = await res.json();
+  const expiry = new Date(Date.now() + (data.expires_in || 3600) * 1000);
+  await pool.query(
+    'UPDATE google_accounts SET access_token = $1, token_expiry = $2, updated_at = CURRENT_TIMESTAMP WHERE user_id = $3',
+    [data.access_token, expiry, userId]
+  );
+  return data.access_token;
+};
+
+// Decodifica base64url (formato de los cuerpos de Gmail).
+const b64urlDecode = (data) => Buffer.from((data || '').replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8');
+
+// Extrae texto plano legible de un payload de Gmail (recorre las partes).
+const extractPlainText = (payload) => {
+  if (!payload) return '';
+  let text = '';
+  const walk = (part) => {
+    if (!part) return;
+    if (part.mimeType === 'text/plain' && part.body && part.body.data) {
+      text += b64urlDecode(part.body.data) + '\n';
+    } else if (part.mimeType === 'text/html' && part.body && part.body.data && !text) {
+      // Fallback: quitar etiquetas del HTML si no hubo texto plano
+      text += b64urlDecode(part.body.data).replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ') + '\n';
+    }
+    if (part.parts) part.parts.forEach(walk);
+  };
+  walk(payload);
+  return text.replace(/\s+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 4000);
+};
+
+// Interpreta un lote de correos con Gemini y devuelve candidatos de movimiento.
+const parseEmailsWithGemini = async (emails, categories) => {
+  const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('API Key de Gemini no configurada en el servidor.');
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+
+  const expenseCats = categories.filter(c => c.type === 'expense').map(c => c.name);
+  const incomeCats = categories.filter(c => c.type === 'income').map(c => c.name);
+
+  const prompt = `Eres un asistente que extrae movimientos financieros de correos de notificación bancaria (Colombia).
+Para cada correo del arreglo devuelve un objeto con:
+- "id": el id del correo (cópialo tal cual del input)
+- "isTransaction": true solo si el correo notifica un movimiento real de dinero (compra, pago, transferencia, retiro, abono, recepción). false para promociones, extractos, seguridad, OTP, etc.
+- "type": "expense" (salida de dinero) o "income" (entrada de dinero)
+- "amount": número en pesos colombianos, sin símbolos ni puntos (ej: 42000)
+- "date": fecha del movimiento en formato YYYY-MM-DD (usa la del correo)
+- "description": comercio/destinatario y medio (ej: "Rappi - Tarjeta débito")
+- "category": elige la MÁS adecuada de estas categorías del usuario. Gastos: ${JSON.stringify(expenseCats)}. Ingresos: ${JSON.stringify(incomeCats)}. Si ninguna encaja usa "Otros".
+- "paymentMethod": "cash" si es retiro de efectivo, si no "transfer".
+
+Responde EXCLUSIVAMENTE con un arreglo JSON válido (sin markdown). Correos:
+${JSON.stringify(emails)}`;
+
+  const result = await model.generateContent(prompt);
+  const raw = (await result.response.text()).replace(/```json/gi, '').replace(/```/g, '').trim();
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch { parsed = []; }
+  return Array.isArray(parsed) ? parsed : [];
 };
 
 // ================= RUTAS DE AUTENTICACIÓN =================
@@ -306,10 +439,11 @@ app.post('/api/auth/verify-2fa', async (req, res) => {
     await pool.query("UPDATE users SET two_factor_code = NULL, two_factor_expires = NULL WHERE id = $1", [user.id]);
 
     // Generar Token Final (Larga duración)
+    // 90 días para evitar que el usuario tenga que volver a autenticarse (+2FA) con frecuencia.
     const finalToken = jwt.sign(
-      { id: user.id }, 
-      process.env.JWT_SECRET || 'secret_key_lidutech', 
-      { expiresIn: '7d' }
+      { id: user.id },
+      process.env.JWT_SECRET || 'secret_key_lidutech',
+      { expiresIn: process.env.SESSION_TOKEN_TTL || '90d' }
     );
 
     res.json({ 
@@ -751,6 +885,209 @@ app.post('/api/ai/process', authenticateToken, async (req, res) => {
       res.status(500).json({ error: "Error procesando IA: " + err.message });
     }
   });
+
+// ================= RUTAS GOOGLE / GMAIL (PROTEGIDAS) =================
+
+// Estado de vinculación
+app.get('/api/google/status', authenticateToken, async (req, res) => {
+  try {
+    if (!googleConfigured()) return res.json({ configured: false, linked: false });
+    const { rows } = await pool.query('SELECT email FROM google_accounts WHERE user_id = $1', [req.user.id]);
+    res.json({ configured: true, linked: rows.length > 0, email: rows[0]?.email || null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Genera la URL de consentimiento de Google. El "state" identifica al usuario en el callback.
+app.get('/api/google/auth-url', authenticateToken, async (req, res) => {
+  try {
+    if (!googleConfigured()) return res.status(503).json({ error: 'Integración de Google no configurada en el servidor.' });
+    const state = jwt.sign({ id: req.user.id, purpose: 'google_link' }, process.env.JWT_SECRET || 'secret_key_lidutech', { expiresIn: '15m' });
+    const params = new URLSearchParams({
+      client_id: GOOGLE.clientId,
+      redirect_uri: GOOGLE.redirectUri,
+      response_type: 'code',
+      scope: GOOGLE.scopes.join(' '),
+      access_type: 'offline',
+      include_granted_scopes: 'true',
+      prompt: 'consent', // fuerza refresh_token
+      state,
+    });
+    res.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Callback de Google (NO usa JWT header; valida el "state"). Redirige al frontend.
+app.get('/api/google/callback', async (req, res) => {
+  const redirect = (q) => res.redirect(`${GOOGLE.appUrl}/?${q}`);
+  try {
+    const { code, state, error } = req.query;
+    if (error) return redirect('gmail=error');
+    let decoded;
+    try {
+      decoded = jwt.verify(state, process.env.JWT_SECRET || 'secret_key_lidutech');
+      if (decoded.purpose !== 'google_link') throw new Error('state inválido');
+    } catch {
+      return redirect('gmail=error');
+    }
+
+    const tokens = await exchangeCodeForTokens(code);
+    // Obtener el email de la cuenta vinculada
+    let email = null;
+    try {
+      const ui = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+        headers: { Authorization: 'Bearer ' + tokens.access_token },
+      });
+      if (ui.ok) email = (await ui.json()).email;
+    } catch {}
+
+    const expiry = new Date(Date.now() + (tokens.expires_in || 3600) * 1000);
+    await pool.query(
+      `INSERT INTO google_accounts (user_id, email, access_token, refresh_token, token_expiry, updated_at)
+       VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+       ON CONFLICT (user_id) DO UPDATE SET
+         email = EXCLUDED.email,
+         access_token = EXCLUDED.access_token,
+         refresh_token = COALESCE(EXCLUDED.refresh_token, google_accounts.refresh_token),
+         token_expiry = EXCLUDED.token_expiry,
+         updated_at = CURRENT_TIMESTAMP`,
+      [decoded.id, email, tokens.access_token, tokens.refresh_token || null, expiry]
+    );
+    redirect('gmail=linked');
+  } catch (err) {
+    console.error('[google/callback] Error:', err.message);
+    redirect('gmail=error');
+  }
+});
+
+// Desvincular
+app.delete('/api/google/unlink', authenticateToken, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM google_accounts WHERE user_id = $1', [req.user.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Previsualizar: lee correos de bancos en el rango y devuelve candidatos (sin guardar nada).
+app.post('/api/google/import/preview', authenticateToken, async (req, res) => {
+  try {
+    const { from, to } = req.body;
+    if (!from || !to || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      return res.status(400).json({ error: 'Rango de fechas inválido (usa YYYY-MM-DD).' });
+    }
+    const accessToken = await getGoogleAccessToken(req.user.id);
+
+    // Construir query de Gmail. "before" es exclusivo -> sumamos 1 día a "to".
+    const toGmail = (d) => d.replace(/-/g, '/');
+    const beforeDate = new Date(to + 'T00:00:00Z');
+    beforeDate.setUTCDate(beforeDate.getUTCDate() + 1);
+    const before = beforeDate.toISOString().slice(0, 10).replace(/-/g, '/');
+    const sendersQuery = BANK_SENDERS.length ? '{' + BANK_SENDERS.map(s => 'from:' + s).join(' ') + '} ' : '';
+    const q = `${sendersQuery}after:${toGmail(from)} before:${before}`;
+
+    // Listar mensajes (cap 50 para controlar costo/tiempo)
+    const listRes = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=50&q=${encodeURIComponent(q)}`,
+      { headers: { Authorization: 'Bearer ' + accessToken } }
+    );
+    if (!listRes.ok) return res.status(502).json({ error: 'Error consultando Gmail: ' + (await listRes.text()) });
+    const listData = await listRes.json();
+    const ids = (listData.messages || []).map(m => m.id);
+    if (ids.length === 0) return res.json({ candidates: [], scanned: 0 });
+
+    // Traer cada mensaje y extraer texto
+    const emails = [];
+    for (const id of ids) {
+      const mRes = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`,
+        { headers: { Authorization: 'Bearer ' + accessToken } }
+      );
+      if (!mRes.ok) continue;
+      const msg = await mRes.json();
+      const headers = (msg.payload && msg.payload.headers) || [];
+      const subject = (headers.find(h => h.name.toLowerCase() === 'subject') || {}).value || '';
+      const fromH = (headers.find(h => h.name.toLowerCase() === 'from') || {}).value || '';
+      const body = extractPlainText(msg.payload);
+      emails.push({ id, subject, from: fromH, body, internalDate: msg.internalDate });
+    }
+
+    // Categorías del usuario para que Gemini mapee bien
+    const catsRes = await pool.query(
+      `SELECT name, type FROM categories WHERE is_default = TRUE OR user_id = $1`, [req.user.id]
+    );
+
+    // Parsear con Gemini en lotes de 15
+    let parsed = [];
+    for (let i = 0; i < emails.length; i += 15) {
+      const chunk = emails.slice(i, i + 15).map(e => ({ id: e.id, subject: e.subject, body: e.body }));
+      const out = await parseEmailsWithGemini(chunk, catsRes.rows);
+      parsed = parsed.concat(out);
+    }
+
+    // Marcar los ya importados (dedup por external_ref)
+    const extRefs = ids.map(id => 'gmail:' + id);
+    const existing = await pool.query(
+      `SELECT external_ref FROM transactions WHERE user_id = $1 AND external_ref = ANY($2)`,
+      [req.user.id, extRefs]
+    );
+    const already = new Set(existing.rows.map(r => r.external_ref));
+
+    const candidates = parsed
+      .filter(p => p && p.isTransaction && p.amount)
+      .map(p => ({
+        gmailId: p.id,
+        amount: Number(p.amount),
+        type: p.type === 'income' ? 'income' : 'expense',
+        date: /^\d{4}-\d{2}-\d{2}$/.test(p.date) ? p.date : from,
+        description: p.description || 'Movimiento importado',
+        category: p.category || 'Otros',
+        paymentMethod: p.paymentMethod === 'cash' ? 'cash' : 'transfer',
+        alreadyImported: already.has('gmail:' + p.id),
+      }));
+
+    res.json({ candidates, scanned: emails.length });
+  } catch (err) {
+    console.error('[google/import/preview] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Confirmar: inserta los movimientos seleccionados (idempotente por external_ref).
+app.post('/api/google/import/confirm', authenticateToken, async (req, res) => {
+  try {
+    const { items } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'No hay movimientos para importar.' });
+    }
+    let inserted = 0, skipped = 0;
+    for (const it of items) {
+      const amount = Number(it.amount);
+      if (!amount || amount <= 0) { skipped++; continue; }
+      const type = it.type === 'income' ? 'income' : 'expense';
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(it.date) ? it.date : new Date().toISOString().slice(0, 10);
+      const pm = it.paymentMethod === 'cash' ? 'cash' : 'transfer';
+      const extRef = it.gmailId ? 'gmail:' + it.gmailId : null;
+      const result = await pool.query(
+        `INSERT INTO transactions (user_id, amount, description, date, category, type, method, payment_method, external_ref)
+         VALUES ($1, $2, $3, $4, $5, $6, 'gmail', $7, $8)
+         ON CONFLICT (user_id, external_ref) WHERE external_ref IS NOT NULL
+         DO NOTHING
+         RETURNING id`,
+        [req.user.id, amount, it.description || 'Movimiento importado', date, it.category || 'Otros', type, pm, extRef]
+      );
+      if (result.rows.length > 0) inserted++; else skipped++;
+    }
+    res.json({ success: true, inserted, skipped });
+  } catch (err) {
+    console.error('[google/import/confirm] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // --- START SERVER ---
 const PORT = process.env.PORT || 4000;

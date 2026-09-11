@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Save, Link as LinkIcon, Wallet, Trash2, X, User as UserIcon, UploadCloud, Lock } from 'lucide-react';
+import { Settings, Save, Link as LinkIcon, Wallet, Trash2, X, User as UserIcon, UploadCloud, Lock, Mail, Download, Loader2, CheckCircle2 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { IconSelector } from './IconSelector';
 import { UserProfile, Category } from '../types';
 import { StorageService } from '../services/storageService';
+import { GoogleService, GoogleStatus } from '../services/googleService';
+import { GmailImportModal } from './GmailImportModal';
 
 interface SettingsViewProps {
     user: UserProfile;
     onUpdateUser: (updatedUser: UserProfile) => void;
     categories: Category[];
     onUpdateCategories: (newCategories: Category[]) => void;
+    onDataImported?: () => void;
 }
 
-export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, categories, onUpdateCategories }) => {
+export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, categories, onUpdateCategories, onDataImported }) => {
     // --- Local Profile State ---
     const [avatar, setAvatar] = useState(user.avatar || '');
     const [newPassword, setNewPassword] = useState('');
@@ -23,10 +26,43 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
     const [newCategoryName, setNewCategoryName] = useState('');
     const [newCategoryIcon, setNewCategoryIcon] = useState('Circle');
 
+    // --- Google / Gmail State ---
+    const [googleStatus, setGoogleStatus] = useState<GoogleStatus | null>(null);
+    const [googleBusy, setGoogleBusy] = useState(false);
+    const [showImportModal, setShowImportModal] = useState(false);
+
     useEffect(() => {
         setAvatar(user.avatar || '');
         setN8nUrl(user.n8nUrl || '');
     }, [user]);
+
+    useEffect(() => {
+        GoogleService.getStatus().then(setGoogleStatus).catch(() => setGoogleStatus({ configured: false, linked: false }));
+    }, []);
+
+    const handleConnectGoogle = async () => {
+        setGoogleBusy(true);
+        try {
+            const url = await GoogleService.getAuthUrl();
+            window.location.href = url; // Redirige al consentimiento de Google
+        } catch (e) {
+            console.error(e);
+            setGoogleBusy(false);
+        }
+    };
+
+    const handleUnlinkGoogle = async () => {
+        if (!confirm('¿Desvincular tu cuenta de Google? Podrás volver a vincularla cuando quieras.')) return;
+        setGoogleBusy(true);
+        try {
+            await GoogleService.unlink();
+            setGoogleStatus({ configured: true, linked: false, email: null });
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setGoogleBusy(false);
+        }
+    };
 
     const expenseCategories = categories.filter(c => c.type === 'expense');
     const incomeCategories = categories.filter(c => c.type === 'income');
@@ -182,6 +218,50 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
                 </div>
             </div>
 
+            {/* --- Vinculación con Google / Gmail --- */}
+            <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+                <h2 className="text-xl font-bold mb-1 flex items-center gap-2"><Mail size={20} className="text-primary-500" /> Google (Gmail)</h2>
+                <p className="text-sm text-slate-400 mb-4">Vincula tu Gmail para importar automáticamente tus gastos e ingresos desde las notificaciones de tus bancos, seleccionando y editando cada uno.</p>
+
+                {googleStatus === null ? (
+                    <div className="flex items-center gap-2 text-slate-400 text-sm"><Loader2 size={16} className="animate-spin" /> Cargando estado...</div>
+                ) : !googleStatus.configured ? (
+                    <div className="text-sm text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+                        La integración de Google aún no está configurada en el servidor (faltan variables de entorno). Ver la guía de configuración.
+                    </div>
+                ) : googleStatus.linked ? (
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2 text-sm text-emerald-400">
+                            <CheckCircle2 size={16} /> Vinculado{googleStatus.email ? `: ${googleStatus.email}` : ''}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                onClick={() => setShowImportModal(true)}
+                                className="bg-primary-600 hover:bg-primary-500 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+                            >
+                                <Download size={16} /> Importar movimientos
+                            </button>
+                            <button
+                                onClick={handleUnlinkGoogle}
+                                disabled={googleBusy}
+                                className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+                            >
+                                Desvincular
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <button
+                        onClick={handleConnectGoogle}
+                        disabled={googleBusy}
+                        className="bg-white hover:bg-slate-100 text-slate-800 px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 disabled:opacity-50"
+                    >
+                        {googleBusy ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} className="text-primary-600" />}
+                        Vincular cuenta de Google
+                    </button>
+                )}
+            </div>
+
             <div className="flex justify-end">
                 <button
                     onClick={handleSaveSettings}
@@ -275,6 +355,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
                     </div>
                 </div>
             </div>
+
+            <GmailImportModal
+                isOpen={showImportModal}
+                onClose={() => setShowImportModal(false)}
+                expenseCategories={expenseCategories}
+                incomeCategories={incomeCategories}
+                onImported={() => onDataImported?.()}
+            />
         </div>
     );
 };
