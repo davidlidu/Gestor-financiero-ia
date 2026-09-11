@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Settings, Plus, LayoutDashboard, Wallet, PieChart, Menu, LogOut, Trash2, Edit2, TrendingUp, TrendingDown, DollarSign, Pencil, Filter, X, Lock, Mail, User as UserIcon, ShieldCheck, PiggyBank, ArrowRightLeft, Link as LinkIcon, Save, Camera, UploadCloud, Download, CalendarDays } from 'lucide-react';
+import { Settings, Plus, LayoutDashboard, Wallet, PieChart, Menu, LogOut, Trash2, Edit2, TrendingUp, TrendingDown, DollarSign, Pencil, Filter, X, Lock, Mail, User as UserIcon, ShieldCheck, PiggyBank, ArrowRightLeft, Link as LinkIcon, Save, Camera, UploadCloud, Download, CalendarDays, ChevronLeft } from 'lucide-react';
 import { Transaction, UserProfile, SavingsGoal, AuthState, Category } from './types';
 import { StorageService } from './services/storageService';
 import { AuthService } from './services/authService';
@@ -10,6 +10,7 @@ import { TransferModal } from './components/TransferModal';
 import { Layout } from './components/Layout';
 import { BudgetTracker } from './components/BudgetTracker';
 import { Auth } from './components/Auth';
+import { LandingHome } from './components/LandingHome';
 import { TransactionsView } from './components/TransactionsView';
 import { CategoryFilter } from './components/CategoryFilter';
 import { SettingsView } from './components/SettingsView';
@@ -50,6 +51,8 @@ function App() {
     const [user, setUser] = useState<UserProfile | null>(null);
     const [authView, setAuthView] = useState<AuthState>({ view: 'login', email: '' });
     const [authLoading, setAuthLoading] = useState(true);
+    // Controla si se muestra la presentación pública (landing) o el formulario de acceso
+    const [showAuth, setShowAuth] = useState(false);
 
     // Auth Form State
     const [emailInput, setEmailInput] = useState('');
@@ -601,24 +604,44 @@ function App() {
     );
 
     if (!user) {
+        // Página principal pública: explica el propósito de la app (homepage para Google/SEO).
+        // Al pulsar "Iniciar sesión" / "Crear cuenta" se muestra el formulario de acceso.
+        if (!showAuth) {
+            return (
+                <LandingHome
+                    onEnter={(v) => {
+                        if (v) setAuthView({ view: v, email: '' });
+                        setShowAuth(true);
+                    }}
+                />
+            );
+        }
         return (
-            <Auth
-                authView={authView}
-                setAuthView={setAuthView}
-                handleLogin={handleLogin}
-                handleRegister={handleRegister}
-                handleVerify2FA={handleVerify2FA}
-                emailInput={emailInput}
-                setEmailInput={setEmailInput}
-                passwordInput={passwordInput}
-                setPasswordInput={setPasswordInput}
-                nameInput={nameInput}
-                setNameInput={setNameInput}
-                otpInput={otpInput}
-                setOtpInput={setOtpInput}
-                rememberMe={rememberMe}
-                setRememberMe={setRememberMe}
-            />
+            <div className="relative">
+                <button
+                    onClick={() => setShowAuth(false)}
+                    className="absolute top-4 left-4 z-10 text-sm text-slate-400 hover:text-white flex items-center gap-1"
+                >
+                    <ChevronLeft size={16} /> Volver al inicio
+                </button>
+                <Auth
+                    authView={authView}
+                    setAuthView={setAuthView}
+                    handleLogin={handleLogin}
+                    handleRegister={handleRegister}
+                    handleVerify2FA={handleVerify2FA}
+                    emailInput={emailInput}
+                    setEmailInput={setEmailInput}
+                    passwordInput={passwordInput}
+                    setPasswordInput={setPasswordInput}
+                    nameInput={nameInput}
+                    setNameInput={setNameInput}
+                    otpInput={otpInput}
+                    setOtpInput={setOtpInput}
+                    rememberMe={rememberMe}
+                    setRememberMe={setRememberMe}
+                />
+            </div>
         );
     }
 

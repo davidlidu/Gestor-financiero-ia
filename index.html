@@ -4,7 +4,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>DeerSystems Financial IA</title>
+  <title>DeerSystems Financial IA — Gestor de finanzas personales con IA</title>
+  <meta name="description" content="DeerSystems Financial IA es una app de Lidutech para gestionar tus ingresos, gastos, metas de ahorro, presupuestos y cuotas, con importación asistida por IA desde las notificaciones bancarias de tu Gmail (solo lectura)." />
 
   <!-- Modern Typography: Outfit -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -154,7 +155,21 @@
 </head>
 
 <body class="bg-slate-900 text-slate-100 antialiased selection:bg-primary-500 selection:text-white">
-  <div id="root"></div>
+  <div id="root">
+    <!-- Contenido de respaldo visible para navegadores/rastreadores sin JavaScript.
+         React lo reemplaza al cargar. Describe el propósito de la app para la verificación. -->
+    <noscript>
+      <div style="max-width:720px;margin:40px auto;padding:0 20px;font-family:sans-serif;">
+        <h1>DeerSystems Financial IA</h1>
+        <p>Aplicación de Lidutech para gestionar tus finanzas personales: registra ingresos y gastos,
+          crea metas de ahorro, controla presupuestos y cuotas, y visualiza reportes de tu dinero.</p>
+        <p>De forma opcional puedes vincular tu cuenta de Google para importar movimientos desde las
+          notificaciones bancarias de tu Gmail (acceso de solo lectura; tú revisas y decides qué importar).</p>
+        <p><a href="/inicio.html">Conoce más sobre la app</a> ·
+          <a href="/privacidad.html">Política de privacidad</a></p>
+      </div>
+    </noscript>
+  </div>
 
   <script type="module" src="/index.tsx"></script>
 
