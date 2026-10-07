@@ -659,11 +659,11 @@ function App() {
     // --- Main App Render ---
     return (
         <Layout user={user} onLogout={handleLogout} currentView={view} onNavigate={setView}>
-            <div className="p-4 lg:p-8 max-w-7xl mx-auto space-y-6 pb-24">
+            <div className="max-w-7xl mx-auto space-y-6 pb-24">
 
                 {/* Filter Component Reusable (Optimizado Mobile & Desktop) */}
                 {(view === 'dashboard' || view === 'transactions') && (
-                    <div className="bg-slate-800 rounded-xl border border-slate-700 mb-6 overflow-hidden">
+                    <div className="bg-slate-800 rounded-xl border border-slate-700 mb-6">
 
                         {/* Cabecera del Filtro (Click para abrir/cerrar en móvil) */}
                         <div
@@ -686,7 +686,7 @@ function App() {
                             <div className="flex flex-wrap gap-2 mb-3">
                                 <button
                                     onClick={() => handlePeriodChange('current_month')}
-                                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all border ${filterPeriod === 'current_month'
+                                    className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold transition-all border ${filterPeriod === 'current_month'
                                         ? 'bg-primary-600 text-white border-primary-500 shadow-lg shadow-primary-500/20'
                                         : 'bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500 hover:text-white'
                                         }`}
@@ -695,7 +695,7 @@ function App() {
                                 </button>
                                 <button
                                     onClick={() => handlePeriodChange('prev_month')}
-                                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all border ${filterPeriod === 'prev_month'
+                                    className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold transition-all border ${filterPeriod === 'prev_month'
                                         ? 'bg-primary-600 text-white border-primary-500 shadow-lg shadow-primary-500/20'
                                         : 'bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500 hover:text-white'
                                         }`}
@@ -704,7 +704,7 @@ function App() {
                                 </button>
                                 <button
                                     onClick={() => handlePeriodChange('custom')}
-                                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all border ${filterPeriod === 'custom'
+                                    className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold transition-all border ${filterPeriod === 'custom'
                                         ? 'bg-primary-600 text-white border-primary-500 shadow-lg shadow-primary-500/20'
                                         : 'bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500 hover:text-white'
                                         }`}
@@ -713,7 +713,7 @@ function App() {
                                 </button>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 w-full">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 w-full [&>*]:min-w-0">
                                 {/* Search */}
                                 <div className="relative">
                                     <span className="absolute left-3 top-3.5 text-slate-500"><Search size={16} /></span>
@@ -1103,6 +1103,7 @@ function App() {
                         onUpdateUser={setUser}
                         categories={categories}
                         onUpdateCategories={setCategories}
+                        transactions={transactions}
                         onDataImported={loadUserData}
                     />
                 )}

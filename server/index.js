@@ -114,6 +114,18 @@ const initDB = async () => {
       );
     `);
 
+    // Tabla Análisis mensuales con IA (uno por usuario y mes)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS monthly_analyses (
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        month CHAR(7) NOT NULL, -- 'YYYY-MM'
+        content JSONB NOT NULL,
+        partial BOOLEAN DEFAULT FALSE, -- generado antes de cerrar el mes
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, month)
+      );
+    `);
+
       // Buscamos si ya hay categorías por defecto insertadas
     const catCheck = await pool.query("SELECT count(*) FROM categories WHERE is_default = TRUE");
     
@@ -1088,6 +1100,188 @@ app.post('/api/google/import/confirm', authenticateToken, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ================= ANÁLISIS MENSUAL CON IA =================
+// Colombia no tiene horario de verano: UTC-5 fijo.
+const bogotaNow = () => new Date(Date.now() - 5 * 3600 * 1000);
+const pad2 = (n) => String(n).padStart(2, '0');
+const monthKey = (d) => `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}`;
+const isLastDayOfMonth = (d) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1)).getUTCDate() === 1;
+// 'YYYY-MM' -> { first: 'YYYY-MM-01', next: primer día del mes siguiente }
+const monthRange = (month) => {
+  const [y, m] = month.split('-').map(Number);
+  const nextY = m === 12 ? y + 1 : y;
+  const nextM = m === 12 ? 1 : m + 1;
+  return { first: `${y}-${pad2(m)}-01`, next: `${nextY}-${pad2(nextM)}-01` };
+};
+const prevMonthKey = (month) => {
+  const [y, m] = month.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${pad2(m - 1)}`;
+};
+const MONTH_NAMES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+// Totales del mes. La categoría "Ahorro" son traslados hacia/desde metas de ahorro: no son consumo ni ingreso real.
+const monthTotals = async (userId, month) => {
+  const { first, next } = monthRange(month);
+  const { rows } = await pool.query(
+    `SELECT type, category, SUM(amount)::float AS total, COUNT(*)::int AS n
+       FROM transactions WHERE user_id = $1 AND date >= $2 AND date < $3
+      GROUP BY type, category ORDER BY total DESC`,
+    [userId, first, next]
+  );
+  const t = { income: 0, expense: 0, savingsDeposited: 0, savingsWithdrawn: 0, count: 0, expenseByCategory: [], incomeByCategory: [] };
+  for (const r of rows) {
+    t.count += r.n;
+    if (r.category === 'Ahorro') {
+      if (r.type === 'expense') t.savingsDeposited += r.total; else t.savingsWithdrawn += r.total;
+    } else if (r.type === 'expense') {
+      t.expense += r.total; t.expenseByCategory.push({ category: r.category, total: r.total, n: r.n });
+    } else {
+      t.income += r.total; t.incomeByCategory.push({ category: r.category, total: r.total, n: r.n });
+    }
+  }
+  return t;
+};
+
+// Genera (y guarda) el análisis de un mes. Devuelve null si el mes no tiene movimientos.
+const generateMonthlyAnalysis = async (userId, month, partial = false) => {
+  const cur = await monthTotals(userId, month);
+  if (cur.count === 0) return null;
+  const prev = await monthTotals(userId, prevMonthKey(month));
+  const { first, next } = monthRange(month);
+  const big = await pool.query(
+    `SELECT date::text AS date, amount::float AS amount, category, description FROM transactions
+      WHERE user_id = $1 AND date >= $2 AND date < $3 AND type = 'expense' AND category <> 'Ahorro'
+      ORDER BY amount DESC LIMIT 5`,
+    [userId, first, next]
+  );
+
+  const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('API Key de Gemini no configurada en el servidor.');
+  const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({
+    model: 'gemini-2.5-flash-lite',
+    generationConfig: { responseMimeType: 'application/json' },
+  });
+
+  const [y, m] = month.split('-').map(Number);
+  const data = {
+    mes: `${MONTH_NAMES[m - 1]} de ${y}`,
+    moneda: 'COP (pesos colombianos)',
+    mes_completo: !partial,
+    este_mes: cur,
+    mes_anterior: prev.count > 0 ? prev : 'sin datos',
+    gastos_mas_grandes: big.rows,
+  };
+  const prompt = `Eres un asesor financiero personal. Analiza el mes de un usuario usando SOLO los datos dados (no inventes cifras).
+Notas: "savingsDeposited/savingsWithdrawn" son traslados a/desde metas de ahorro; no los cuentes como gasto ni ingreso. ${partial ? 'El mes aún NO ha terminado: es un análisis parcial, dilo en el resumen.' : ''}
+Responde en español, tono cercano y claro, con montos en pesos colombianos (ej: $1.250.000). Devuelve EXCLUSIVAMENTE un JSON con esta forma:
+{"summary": "2-3 frases con el panorama del mes (ingresos vs gastos, balance)",
+ "highlights": ["2-4 hallazgos concretos, comparando con el mes anterior cuando haya datos"],
+ "alerts": ["0-3 alertas sobre gastos que subieron mucho, categorías que dominan o balance negativo; lista vacía si no hay"],
+ "recommendations": ["2-3 acciones prácticas y específicas para el próximo mes"]}
+Datos:
+${JSON.stringify(data)}`;
+
+  const result = await model.generateContent(prompt);
+  const raw = (await result.response.text()).replace(/```json/gi, '').replace(/```/g, '').trim();
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch { throw new Error('La IA devolvió una respuesta no válida.'); }
+  const arr = (v) => (Array.isArray(v) ? v.map(String).filter(Boolean) : []);
+  const content = {
+    summary: String(parsed.summary || ''),
+    highlights: arr(parsed.highlights),
+    alerts: arr(parsed.alerts),
+    recommendations: arr(parsed.recommendations),
+  };
+  if (!content.summary) throw new Error('La IA no devolvió un resumen.');
+
+  await pool.query(
+    `INSERT INTO monthly_analyses (user_id, month, content, partial, created_at)
+     VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+     ON CONFLICT (user_id, month) DO UPDATE SET content = EXCLUDED.content, partial = EXCLUDED.partial, created_at = CURRENT_TIMESTAMP`,
+    [userId, month, JSON.stringify(content), partial]
+  );
+  return { month, content, partial, createdAt: new Date().toISOString() };
+};
+
+// Meses que deben tener análisis: de enero del año en curso hasta el último mes cerrado
+// (más el mes actual si hoy es el último día del mes).
+const analysisTargetMonths = () => {
+  const now = bogotaNow();
+  const months = [];
+  const lastMonth = isLastDayOfMonth(now) ? now.getUTCMonth() : now.getUTCMonth() - 1;
+  for (let m = 0; m <= lastMonth; m++) months.push(`${now.getUTCFullYear()}-${pad2(m + 1)}`);
+  return months;
+};
+
+// Lista los análisis guardados y los meses pendientes (con movimientos y sin análisis definitivo).
+app.get('/api/ai/monthly-analyses', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT month, content, partial, created_at AS "createdAt" FROM monthly_analyses WHERE user_id = $1 ORDER BY month DESC',
+      [req.user.id]
+    );
+    const done = new Map(rows.map(r => [r.month, r]));
+    const pending = [];
+    for (const month of analysisTargetMonths()) {
+      const existing = done.get(month);
+      if (existing && !existing.partial) continue;
+      const { first, next } = monthRange(month);
+      const has = await pool.query('SELECT 1 FROM transactions WHERE user_id = $1 AND date >= $2 AND date < $3 LIMIT 1', [req.user.id, first, next]);
+      if (has.rows.length > 0) pending.push(month);
+    }
+    res.json({ analyses: rows, pending });
+  } catch (err) {
+    console.error('[ai/monthly-analyses] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Genera el análisis de UN mes (el cliente recorre los pendientes de uno en uno para evitar timeouts).
+app.post('/api/ai/monthly-analyses/generate', authenticateToken, async (req, res) => {
+  try {
+    const { month } = req.body;
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month || '')) return res.status(400).json({ error: 'month inválido (usa YYYY-MM).' });
+    const now = bogotaNow();
+    if (month > monthKey(now)) return res.status(400).json({ error: 'No se puede analizar un mes futuro.' });
+    // Mes en curso antes de su último día => análisis parcial (el automático de fin de mes lo reemplaza).
+    const partial = month === monthKey(now) && !isLastDayOfMonth(now);
+    const out = await generateMonthlyAnalysis(req.user.id, month, partial);
+    if (!out) return res.status(404).json({ error: 'Ese mes no tiene movimientos.' });
+    res.json(out);
+  } catch (err) {
+    console.error('[ai/monthly-analyses/generate] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Tarea automática: el último día del mes (desde las 9 pm hora Colombia) genera el análisis de todos los usuarios.
+let monthEndRunning = false;
+const runMonthEndAnalyses = async () => {
+  if (monthEndRunning) return;
+  const now = bogotaNow();
+  if (!isLastDayOfMonth(now) || now.getUTCHours() < 21) return;
+  monthEndRunning = true;
+  try {
+    const month = monthKey(now);
+    const { first, next } = monthRange(month);
+    const users = await pool.query(
+      `SELECT DISTINCT t.user_id FROM transactions t
+        WHERE t.date >= $1 AND t.date < $2
+          AND NOT EXISTS (SELECT 1 FROM monthly_analyses a WHERE a.user_id = t.user_id AND a.month = $3 AND a.partial = FALSE)`,
+      [first, next, month]
+    );
+    for (const u of users.rows) {
+      try { await generateMonthlyAnalysis(u.user_id, month, false); console.log(`[month-end] análisis ${month} usuario ${u.user_id}`); }
+      catch (e) { console.error(`[month-end] usuario ${u.user_id}:`, e.message); }
+    }
+  } catch (e) {
+    console.error('[month-end] Error:', e.message);
+  } finally {
+    monthEndRunning = false;
+  }
+};
+setInterval(runMonthEndAnalyses, 30 * 60 * 1000);
 
 // --- START SERVER ---
 const PORT = process.env.PORT || 4000;

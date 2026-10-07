@@ -3,6 +3,7 @@ import { BarChart3, TrendingUp, TrendingDown, ArrowRight, Calendar, ChevronLeft,
 import * as LucideIcons from 'lucide-react';
 import { Transaction, Category } from '../types';
 import { formatMoney } from '../utils/format';
+import { MonthlyAnalysisCard, useMonthlyAnalyses } from './MonthlyAnalysisCard';
 
 interface ReportsViewProps {
     transactions: Transaction[];
@@ -12,7 +13,9 @@ interface ReportsViewProps {
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const SHORT_MONTHS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
-export const ReportsView: React.FC<ReportsViewProps> = ({ transactions, categories }) => {
+export const ReportsView: React.FC<ReportsViewProps> = ({ transactions: rawTransactions, categories }) => {
+    const transactions = useMemo(() => rawTransactions.map(t => ({ ...t, date: t.date.substring(0, 10) })), [rawTransactions]);
+    const ai = useMonthlyAnalyses();
     const now = new Date();
     const [selectedYear, setSelectedYear] = useState(now.getFullYear());
     const [selectedMonth, setSelectedMonth] = useState(now.getMonth()); // 0-indexed
@@ -135,7 +138,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ transactions, categori
     return (
         <div className="space-y-6">
             {/* Month Selector */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
                     <h2 className="text-xl font-bold text-white flex items-center gap-2">
                         <BarChart3 size={22} className="text-emerald-400" /> Reportes
@@ -158,9 +161,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ transactions, categori
 
             {/* Summary Cards */}
             <div className="grid grid-cols-3 gap-3">
-                <div className="bg-slate-800/80 rounded-xl p-4 border border-slate-700/80">
+                <div className="bg-slate-800/80 rounded-xl p-3 sm:p-4 border border-slate-700/80 min-w-0">
                     <p className="text-[10px] text-slate-500 uppercase font-medium mb-1">Ingresos</p>
-                    <p className="text-lg font-bold text-emerald-400">${formatMoney(reportData.income)}</p>
+                    <p className="text-xs min-[420px]:text-sm sm:text-lg font-bold text-emerald-400">${formatMoney(reportData.income)}</p>
                     {reportData.incomeTrend !== 0 && (
                         <div className={`flex items-center gap-1 mt-1 text-[10px] font-semibold ${reportData.incomeTrend >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
                             {reportData.incomeTrend >= 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
@@ -168,9 +171,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ transactions, categori
                         </div>
                     )}
                 </div>
-                <div className="bg-slate-800/80 rounded-xl p-4 border border-slate-700/80">
+                <div className="bg-slate-800/80 rounded-xl p-3 sm:p-4 border border-slate-700/80 min-w-0">
                     <p className="text-[10px] text-slate-500 uppercase font-medium mb-1">Egresos</p>
-                    <p className="text-lg font-bold text-red-400">${formatMoney(reportData.expense)}</p>
+                    <p className="text-xs min-[420px]:text-sm sm:text-lg font-bold text-red-400">${formatMoney(reportData.expense)}</p>
                     {reportData.expenseTrend !== 0 && (
                         <div className={`flex items-center gap-1 mt-1 text-[10px] font-semibold ${reportData.expenseTrend <= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
                             {reportData.expenseTrend > 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
@@ -178,14 +181,32 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ transactions, categori
                         </div>
                     )}
                 </div>
-                <div className="bg-slate-800/80 rounded-xl p-4 border border-slate-700/80">
+                <div className="bg-slate-800/80 rounded-xl p-3 sm:p-4 border border-slate-700/80 min-w-0">
                     <p className="text-[10px] text-slate-500 uppercase font-medium mb-1">Flujo Neto</p>
-                    <p className={`text-lg font-bold ${reportData.netFlow >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <p className={`text-xs min-[420px]:text-sm sm:text-lg font-bold ${reportData.netFlow >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                         {reportData.netFlow >= 0 ? '+' : ''}${formatMoney(reportData.netFlow)}
                     </p>
                     <p className="text-[10px] text-slate-600 mt-1">{reportData.txCount} movimientos</p>
                 </div>
             </div>
+
+            {/* Análisis mensual con IA */}
+            {(() => {
+                const key = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
+                return (
+                    <MonthlyAnalysisCard
+                        month={key}
+                        label={`${MONTHS[selectedMonth]} ${selectedYear}`}
+                        hasTransactions={reportData.txCount > 0}
+                        isCurrentMonth={selectedYear === now.getFullYear() && selectedMonth === now.getMonth()}
+                        analysis={ai.analyses[key]}
+                        busy={ai.busy.includes(key)}
+                        queued={ai.pending.includes(key)}
+                        error={ai.errors[key]}
+                        onGenerate={ai.generate}
+                    />
+                );
+            })()}
 
             {/* 6-Month Overview Bar Chart */}
             <div className="bg-slate-800/60 rounded-xl border border-slate-700/50 p-5">

@@ -167,9 +167,9 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                                     onClick={() => onEditTransaction(t)}
                                     className="bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 hover:border-slate-700 rounded-xl p-3 cursor-pointer transition-all group"
                                 >
-                                    <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2.5 sm:gap-3">
                                         {/* Category Icon */}
-                                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+                                        <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
                                             <FinalIcon size={20} />
                                         </div>
 
@@ -188,7 +188,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
 
                                         {/* Amount */}
                                         <div className="text-right flex-shrink-0">
-                                            <span className={`block font-bold text-base ${t.category === 'Ahorro' ? 'text-blue-400' :
+                                            <span className={`block font-bold text-sm sm:text-base ${t.category === 'Ahorro' ? 'text-blue-400' :
                                                     t.type === 'income' ? 'text-emerald-400' : 'text-red-400'
                                                 }`}>
                                                 {t.type === 'income' ? '+' : '-'}${formatMoney(t.amount)}

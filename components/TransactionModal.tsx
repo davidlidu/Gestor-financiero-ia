@@ -3,6 +3,7 @@ import { Camera, Mic, Upload, X, Loader2, Check, Banknote, ArrowRightLeft, Plus,
 import { Transaction, TransactionType, Category } from '../types';
 import { GeminiService } from '../services/geminiService';
 import { StorageService } from '../services/storageService';
+import { IconSelector } from './IconSelector';
 
 interface Props {
   isOpen: boolean;
@@ -40,6 +41,7 @@ export const TransactionModal: React.FC<Props> = ({
   // Quick Add Category
   const [showNewCat, setShowNewCat] = useState(false);
   const [newCatName, setNewCatName] = useState('');
+  const [newCatIcon, setNewCatIcon] = useState('Circle');
   const [savingCat, setSavingCat] = useState(false);
 
   // Form State
@@ -375,10 +377,14 @@ export const TransactionModal: React.FC<Props> = ({
                           className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"
                           autoFocus
                         />
+                        <div>
+                          <p className="text-[11px] text-slate-400 mb-1">Icono de la categoría:</p>
+                          <IconSelector selectedIcon={newCatIcon} onSelect={setNewCatIcon} />
+                        </div>
                         <div className="flex gap-2">
                           <button
                             type="button"
-                            onClick={() => { setShowNewCat(false); setNewCatName(''); }}
+                            onClick={() => { setShowNewCat(false); setNewCatName(''); setNewCatIcon('Circle'); }}
                             className="flex-1 px-3 py-1.5 text-xs text-slate-400 hover:text-white bg-slate-800 rounded-lg transition-colors"
                           >
                             Cancelar
@@ -392,13 +398,14 @@ export const TransactionModal: React.FC<Props> = ({
                               try {
                                 const created = await StorageService.createCategory({
                                   name: newCatName.trim(),
-                                  icon: 'Circle',
+                                  icon: newCatIcon,
                                   type: type
                                 });
                                 onCategoryCreated?.(created);
                                 setCategory(created.name);
                                 setShowNewCat(false);
                                 setNewCatName('');
+                                setNewCatIcon('Circle');
                               } catch (err) {
                                 console.error('Error creating category:', err);
                               } finally {

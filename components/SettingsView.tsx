@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Settings, Save, Link as LinkIcon, Wallet, Trash2, X, User as UserIcon, UploadCloud, Lock, Mail, Download, Loader2, CheckCircle2 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { IconSelector } from './IconSelector';
-import { UserProfile, Category } from '../types';
+import { UserProfile, Category, Transaction } from '../types';
 import { StorageService } from '../services/storageService';
 import { GoogleService, GoogleStatus } from '../services/googleService';
 import { GmailImportModal } from './GmailImportModal';
@@ -12,10 +12,11 @@ interface SettingsViewProps {
     onUpdateUser: (updatedUser: UserProfile) => void;
     categories: Category[];
     onUpdateCategories: (newCategories: Category[]) => void;
+    transactions?: Transaction[];
     onDataImported?: () => void;
 }
 
-export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, categories, onUpdateCategories, onDataImported }) => {
+export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, categories, onUpdateCategories, transactions = [], onDataImported }) => {
     // --- Local Profile State ---
     const [avatar, setAvatar] = useState(user.avatar || '');
     const [newPassword, setNewPassword] = useState('');
@@ -300,7 +301,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
                         {/* Selector de Iconos */}
                         <div>
                             <p className="text-xs text-slate-400 mb-1">Selecciona un icono:</p>
-                            <IconSelector selected={newCategoryIcon} onSelect={setNewCategoryIcon} />
+                            <IconSelector selectedIcon={newCategoryIcon} onSelect={setNewCategoryIcon} />
                         </div>
 
                         <button onClick={handleAddCategory} className="bg-primary-600 hover:bg-primary-500 text-white px-4 py-2 rounded-lg font-medium transition-colors w-full md:w-auto self-end">
@@ -361,6 +362,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
                 onClose={() => setShowImportModal(false)}
                 expenseCategories={expenseCategories}
                 incomeCategories={incomeCategories}
+                transactions={transactions}
                 onImported={() => onDataImported?.()}
             />
         </div>
