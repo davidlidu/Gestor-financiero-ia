@@ -26,6 +26,45 @@ const handleResponse = async (response: Response) => {
   return response.json();
 };
 
+const LOCAL_BUDGET_PREFIX = 'lidutech_budgets_';
+let budgetMigration: Promise<void> | null = null;
+
+// Sube a la nube, una sola vez, los presupuestos que estaban guardados solo en este navegador.
+// Si algo falla no se borra nada local y se reintenta en la próxima carga.
+const migrateLocalBudgets = (): Promise<void> => {
+  if (!budgetMigration) {
+    budgetMigration = (async () => {
+      const keys = Object.keys(localStorage).filter(k => k.startsWith(LOCAL_BUDGET_PREFIX));
+      if (keys.length === 0) return;
+      const items: { categoryId: string; categoryName: string; amount: number; monthYear: string }[] = [];
+      for (const key of keys) {
+        try {
+          const list: Budget[] = JSON.parse(localStorage.getItem(key) || '[]');
+          list.forEach(b => items.push({
+            categoryId: b.categoryId,
+            categoryName: b.categoryName,
+            amount: b.amount,
+            monthYear: b.monthYear || key.substring(LOCAL_BUDGET_PREFIX.length)
+          }));
+        } catch { /* entrada corrupta: se ignora */ }
+      }
+      if (items.length > 0) {
+        const response = await fetch(`${API_URL}/budgets/import`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ items })
+        });
+        if (!response.ok) throw new Error('No se pudieron migrar los presupuestos locales');
+      }
+      keys.forEach(k => localStorage.removeItem(k));
+    })().catch(e => {
+      console.error('Migración de presupuestos:', e);
+      budgetMigration = null; // reintentar en la próxima llamada
+    });
+  }
+  return budgetMigration;
+};
+
 export const StorageService = {
 
   // --- TRANSACTIONS (Desde API) ---
@@ -204,33 +243,40 @@ export const StorageService = {
     }
   },
 
-  // --- BUDGETS (localStorage only — backend endpoints not yet deployed) ---
+  // --- BUDGETS (API) ---
+  // Los presupuestos viven en el servidor para compartirse entre web y celular.
   getBudgets: async (monthYear: string): Promise<Budget[]> => {
-    const key = `lidutech_budgets_${monthYear}`;
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : [];
+    try {
+      await migrateLocalBudgets();
+      const response = await fetch(`${API_URL}/budgets?month=${encodeURIComponent(monthYear)}`, { headers: getHeaders() });
+      return await handleResponse(response);
+    } catch (e) {
+      console.error("Error obteniendo presupuestos:", e);
+      return [];
+    }
   },
 
+  // Crea el presupuesto de la categoría en ese mes o actualiza su monto si ya existía
   saveBudget: async (budget: Budget): Promise<Budget[]> => {
-    const key = `lidutech_budgets_${budget.monthYear}`;
-    const existing: Budget[] = JSON.parse(localStorage.getItem(key) || '[]');
-    const idx = existing.findIndex((b: Budget) => b.categoryId === budget.categoryId);
-    if (idx >= 0) {
-      existing[idx] = { ...existing[idx], amount: budget.amount };
-    } else {
-      budget.id = Date.now().toString(36) + Math.random().toString(36).substring(2, 5);
-      existing.push(budget);
-    }
-    localStorage.setItem(key, JSON.stringify(existing));
-    return existing;
+    await migrateLocalBudgets();
+    const response = await fetch(`${API_URL}/budgets`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({
+        categoryId: budget.categoryId,
+        categoryName: budget.categoryName,
+        amount: budget.amount,
+        monthYear: budget.monthYear
+      })
+    });
+    await handleResponse(response);
+    return await StorageService.getBudgets(budget.monthYear);
   },
 
   deleteBudget: async (id: string, monthYear: string): Promise<Budget[]> => {
-    const key = `lidutech_budgets_${monthYear}`;
-    const existing: Budget[] = JSON.parse(localStorage.getItem(key) || '[]');
-    const filtered = existing.filter(b => b.id !== id);
-    localStorage.setItem(key, JSON.stringify(filtered));
-    return filtered;
+    const response = await fetch(`${API_URL}/budgets/${id}`, { method: 'DELETE', headers: getHeaders() });
+    await handleResponse(response);
+    return await StorageService.getBudgets(monthYear);
   },
 
   // --- INSTALLMENTS / CUOTAS (localStorage) ---

@@ -4,6 +4,7 @@ import { formatMoney } from '../utils/format';
 import { Transaction, Category, Budget } from '../types';
 import { Plus, Edit2, Trash2, PiggyBank, AlertCircle } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
+import { BudgetInsights } from './BudgetInsights';
 
 interface BudgetTrackerProps {
     transactions: Transaction[];
@@ -156,6 +157,10 @@ export const BudgetTracker: React.FC<BudgetTrackerProps> = ({ transactions, cate
                 </div>
             )}
 
+            {budgetStats.length > 0 && (
+                <BudgetInsights month={currentMonth} transactions={transactions} stats={budgetStats} />
+            )}
+
             {budgetStats.length === 0 && !isAdding ? (
                 <div className="text-center py-8">
                     <div className="w-16 h-16 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400">
@@ -189,7 +194,7 @@ export const BudgetTracker: React.FC<BudgetTrackerProps> = ({ transactions, cate
                                         <p className={`font-bold text-lg ${stat.textColor}`}>
                                             {stat.progress.toFixed(0)}%
                                         </p>
-                                        {stat.progress >= 100 && (
+                                        {stat.progress > 100 && (
                                             <p className="text-[10px] text-danger-500 flex items-center gap-1">
                                                 <AlertCircle size={10} /> Presupuesto excedido
                                             </p>

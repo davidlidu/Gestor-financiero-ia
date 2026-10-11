@@ -114,6 +114,20 @@ const initDB = async () => {
       );
     `);
 
+    // Tabla Presupuestos (un límite por categoría de gasto, usuario y mes)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS budgets (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        category_id VARCHAR(50) NOT NULL,
+        category_name VARCHAR(100) NOT NULL,
+        amount NUMERIC(14, 2) NOT NULL,
+        month_year CHAR(7) NOT NULL, -- 'YYYY-MM'
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (user_id, category_id, month_year)
+      );
+    `);
+
     // Tabla Análisis mensuales con IA (uno por usuario y mes)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS monthly_analyses (
@@ -1097,6 +1111,80 @@ app.post('/api/google/import/confirm', authenticateToken, async (req, res) => {
     res.json({ success: true, inserted, skipped });
   } catch (err) {
     console.error('[google/import/confirm] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ================= PRESUPUESTOS =================
+const BUDGET_COLS = 'id, category_id AS "categoryId", category_name AS "categoryName", amount, month_year AS "monthYear"';
+const serializeBudget = (b) => ({ ...b, id: String(b.id), amount: parseFloat(b.amount) });
+const isMonth = (v) => /^\d{4}-(0[1-9]|1[0-2])$/.test(v || '');
+
+app.get('/api/budgets', authenticateToken, async (req, res) => {
+  try {
+    const { month } = req.query;
+    if (!isMonth(month)) return res.status(400).json({ error: 'month inválido (usa YYYY-MM).' });
+    const { rows } = await pool.query(
+      `SELECT ${BUDGET_COLS} FROM budgets WHERE user_id = $1 AND month_year = $2 ORDER BY id`,
+      [req.user.id, month]
+    );
+    res.json(rows.map(serializeBudget));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Crea el presupuesto de una categoría en un mes, o actualiza su monto si ya existía.
+app.post('/api/budgets', authenticateToken, async (req, res) => {
+  try {
+    const { categoryId, categoryName, amount, monthYear } = req.body;
+    const parsed = parseFloat(amount);
+    if (!categoryId || !categoryName) return res.status(400).json({ error: 'categoryId y categoryName son requeridos.' });
+    if (isNaN(parsed) || parsed <= 0) return res.status(400).json({ error: 'amount debe ser un número positivo.' });
+    if (!isMonth(monthYear)) return res.status(400).json({ error: 'monthYear inválido (usa YYYY-MM).' });
+    const { rows } = await pool.query(
+      `INSERT INTO budgets (user_id, category_id, category_name, amount, month_year)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (user_id, category_id, month_year)
+       DO UPDATE SET amount = EXCLUDED.amount, category_name = EXCLUDED.category_name
+       RETURNING ${BUDGET_COLS}`,
+      [req.user.id, String(categoryId), categoryName, parsed, monthYear]
+    );
+    res.json(serializeBudget(rows[0]));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Importa presupuestos que el usuario tenía solo en su navegador. Nunca pisa los que ya existen en el servidor.
+app.post('/api/budgets/import', authenticateToken, async (req, res) => {
+  try {
+    const { items } = req.body;
+    if (!Array.isArray(items)) return res.status(400).json({ error: 'items debe ser un arreglo.' });
+    let imported = 0;
+    for (const it of items) {
+      const amount = parseFloat(it.amount);
+      if (!it.categoryId || !it.categoryName || isNaN(amount) || amount <= 0 || !isMonth(it.monthYear)) continue;
+      const r = await pool.query(
+        `INSERT INTO budgets (user_id, category_id, category_name, amount, month_year)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (user_id, category_id, month_year) DO NOTHING
+         RETURNING id`,
+        [req.user.id, String(it.categoryId), it.categoryName, amount, it.monthYear]
+      );
+      if (r.rows.length > 0) imported++;
+    }
+    res.json({ success: true, imported });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/budgets/:id', authenticateToken, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM budgets WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    res.json({ success: true });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
