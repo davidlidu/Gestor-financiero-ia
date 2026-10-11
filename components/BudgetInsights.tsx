@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Bug, CheckCircle2, TrendingUp, Wallet } from 'lucide-react';
 import { Transaction } from '../types';
 import { formatMoney } from '../utils/format';
@@ -70,6 +70,21 @@ export const BudgetInsights: React.FC<Props> = ({ month, transactions, stats }) 
         return { days, income, totalExpense, planned, spent, ant, cum, lastDay, isCurrent, over };
     }, [month, transactions, stats]);
 
+    // El gráfico se dibuja al ancho real del contenedor: así el texto conserva su tamaño en cualquier pantalla
+    // (con un viewBox fijo se estiraba hasta verse enorme en escritorio).
+    const chartRef = useRef<HTMLDivElement>(null);
+    const [chartW, setChartW] = useState(360);
+    const hasPlan = d.planned > 0;
+    useEffect(() => {
+        const el = chartRef.current;
+        if (!el) return;
+        const update = () => setChartW(Math.max(280, Math.round(el.clientWidth)));
+        update();
+        const ro = new ResizeObserver(update);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, [hasPlan]);
+
     const left = d.planned - d.spent;
     const ratio = d.planned > 0 ? d.spent / d.planned : 0;
     const barColor = ratio > 1 ? 'bg-danger-500' : ratio > 0.85 ? 'bg-orange-500' : 'bg-brand-500';
@@ -117,7 +132,7 @@ export const BudgetInsights: React.FC<Props> = ({ month, transactions, stats }) 
     }
 
     // --- Ritmo de gasto (gráfico) ---
-    const W = 360, H = 180, L = 44, R = 10, T = 10, B = 24;
+    const W = chartW, H = 200, L = 52, R = 12, T = 12, B = 26;
     const top = Math.max(d.planned, d.cum[d.days], 1) * 1.08;
     const x = (day: number) => L + (day / d.days) * (W - L - R);
     const y = (v: number) => T + (1 - v / top) * (H - T - B);
@@ -181,18 +196,19 @@ export const BudgetInsights: React.FC<Props> = ({ month, transactions, stats }) 
                                 : `Vas dentro del ritmo: llevas $${formatMoney(spentNow)} y a esta altura del mes lo ideal sería $${formatMoney(idealNow)}.`)
                             : 'Si la línea verde va por encima de la punteada, gastaste más rápido de lo planeado.'}
                     </p>
-                    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Gasto acumulado frente al ritmo ideal del presupuesto">
+                    <div ref={chartRef} className="w-full">
+                    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block" role="img" aria-label="Gasto acumulado frente al ritmo ideal del presupuesto">
                         {[0, 1, 2, 3, 4].map(i => {
                             const v = (top / 4) * i;
                             return (
                                 <g key={i}>
                                     <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} className="stroke-slate-200 dark:stroke-slate-700" strokeWidth={1} />
-                                    <text x={L - 5} y={y(v) + 3} textAnchor="end" fontSize={9} className="fill-slate-500">{short(v)}</text>
+                                    <text x={L - 5} y={y(v) + 3} textAnchor="end" fontSize={11} className="fill-slate-500">{short(v)}</text>
                                 </g>
                             );
                         })}
                         {xTicks.map(day => (
-                            <text key={day} x={x(day)} y={H - 8} textAnchor={day === d.days ? 'end' : 'middle'} fontSize={9} className="fill-slate-500">
+                            <text key={day} x={x(day)} y={H - 8} textAnchor={day === d.days ? 'end' : 'middle'} fontSize={11} className="fill-slate-500">
                                 {day === d.days ? `Día ${day}` : day}
                             </text>
                         ))}
@@ -202,6 +218,7 @@ export const BudgetInsights: React.FC<Props> = ({ month, transactions, stats }) 
                         <path d={path} fill="none" strokeWidth={2.5} strokeLinejoin="round" className={faster ? 'stroke-danger-500' : 'stroke-brand-500'} />
                         <circle cx={x(d.lastDay)} cy={y(spentNow)} r={4} className={faster ? 'fill-danger-500' : 'fill-brand-500'} />
                     </svg>
+                    </div>
                     <div className="flex items-center justify-center gap-5 text-[11px] text-slate-500 mt-1">
                         <span className="flex items-center gap-1.5"><span className={`w-3 h-0.5 ${faster ? 'bg-danger-500' : 'bg-brand-500'}`} /> Lo que llevas gastado</span>
                         <span className="flex items-center gap-1.5"><span className="w-3 border-t-2 border-dashed border-slate-400" /> Ritmo ideal</span>

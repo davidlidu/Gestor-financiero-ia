@@ -1180,6 +1180,27 @@ app.post('/api/budgets/import', authenticateToken, async (req, res) => {
   }
 });
 
+// Copia los presupuestos de un mes a otro. Las categorías que ya tienen presupuesto en el mes destino no se tocan.
+app.post('/api/budgets/copy', authenticateToken, async (req, res) => {
+  try {
+    const { from, to } = req.body;
+    if (!isMonth(from) || !isMonth(to)) return res.status(400).json({ error: 'from y to deben ser YYYY-MM.' });
+    if (from === to) return res.status(400).json({ error: 'El mes de origen y el de destino son el mismo.' });
+    const r = await pool.query(
+      `INSERT INTO budgets (user_id, category_id, category_name, amount, month_year)
+       SELECT user_id, category_id, category_name, amount, $3 FROM budgets
+        WHERE user_id = $1 AND month_year = $2
+       ON CONFLICT (user_id, category_id, month_year) DO NOTHING
+       RETURNING id`,
+      [req.user.id, from, to]
+    );
+    const total = await pool.query('SELECT COUNT(*)::int AS n FROM budgets WHERE user_id = $1 AND month_year = $2', [req.user.id, from]);
+    res.json({ success: true, copied: r.rows.length, skipped: total.rows[0].n - r.rows.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/api/budgets/:id', authenticateToken, async (req, res) => {
   try {
     await pool.query('DELETE FROM budgets WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);

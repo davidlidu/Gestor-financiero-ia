@@ -273,6 +273,16 @@ export const StorageService = {
     return await StorageService.getBudgets(budget.monthYear);
   },
 
+  // Copia los presupuestos de un mes a otro; los que ya existen en el destino no se tocan
+  copyBudgets: async (from: string, to: string): Promise<{ copied: number; skipped: number }> => {
+    const response = await fetch(`${API_URL}/budgets/copy`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ from, to })
+    });
+    return await handleResponse(response);
+  },
+
   deleteBudget: async (id: string, monthYear: string): Promise<Budget[]> => {
     const response = await fetch(`${API_URL}/budgets/${id}`, { method: 'DELETE', headers: getHeaders() });
     await handleResponse(response);

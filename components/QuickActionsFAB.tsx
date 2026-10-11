@@ -39,14 +39,14 @@ export const QuickActionsFAB: React.FC<QuickActionsFABProps> = ({ onManual, onSc
             )}
 
             {/* Action items - float above FAB */}
-            <div className="fixed bottom-36 right-6 lg:bottom-28 lg:right-10 z-50 flex flex-col-reverse gap-3 items-end">
+            <div className="fixed bottom-36 right-6 lg:bottom-28 lg:right-10 z-50 flex flex-col-reverse gap-3 items-end pointer-events-none">
                 {actions.map((action) => {
                     const Icon = action.icon;
                     return (
                         <div
                             key={action.id}
                             className={`flex items-center gap-3 transition-all duration-300 ease-out ${isOpen
-                                    ? 'opacity-100 translate-y-0 scale-100'
+                                    ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto'
                                     : 'opacity-0 translate-y-4 scale-75 pointer-events-none'
                                 }`}
                             style={{ transitionDelay: isOpen ? action.delay : '0ms' }}
