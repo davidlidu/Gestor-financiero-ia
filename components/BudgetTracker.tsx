@@ -25,6 +25,8 @@ export const BudgetTracker: React.FC<BudgetTrackerProps> = ({ transactions, cate
     // Form state
     const [selectedCategory, setSelectedCategory] = useState<string>('');
     const [budgetAmount, setBudgetAmount] = useState<number | ''>('');
+    const [saving, setSaving] = useState(false);
+    const [saveError, setSaveError] = useState('');
 
     const expenseCategories = useMemo(() => categories.filter(c => c.type === 'expense'), [categories]);
 
@@ -75,24 +77,36 @@ export const BudgetTracker: React.FC<BudgetTrackerProps> = ({ transactions, cate
     const handleSaveBudget = async () => {
         if (!selectedCategory || !budgetAmount) return;
 
-        const cat = expenseCategories.find(c => c.id === selectedCategory);
-        if (!cat) return;
+        // La API devuelve el id de la categoría como número y el <select> entrega texto: se compara como texto.
+        const cat = expenseCategories.find(c => String(c.id) === selectedCategory);
+        if (!cat) {
+            setSaveError('No se encontró la categoría seleccionada. Vuelve a elegirla.');
+            return;
+        }
 
         const newBudget: Budget = {
             id: '',
-            categoryId: cat.id,
+            categoryId: String(cat.id),
             categoryName: cat.name,
             amount: Number(budgetAmount),
             monthYear: currentMonth
         };
 
-        const updated = await StorageService.saveBudget(newBudget);
-        setBudgets(updated);
+        setSaving(true);
+        setSaveError('');
+        try {
+            const updated = await StorageService.saveBudget(newBudget);
+            setBudgets(updated);
 
-        // Reset form
-        setIsAdding(false);
-        setSelectedCategory('');
-        setBudgetAmount('');
+            // Reset form
+            setIsAdding(false);
+            setSelectedCategory('');
+            setBudgetAmount('');
+        } catch (e: any) {
+            setSaveError(e?.message || 'No se pudo guardar el presupuesto. Intenta de nuevo.');
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -148,13 +162,17 @@ export const BudgetTracker: React.FC<BudgetTrackerProps> = ({ transactions, cate
                         </button>
                         <button
                             onClick={handleSaveBudget}
-                            disabled={!selectedCategory || !budgetAmount}
+                            disabled={!selectedCategory || !budgetAmount || saving}
                             className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                         >
-                            Guardar
+                            {saving ? 'Guardando...' : 'Guardar'}
                         </button>
                     </div>
                 </div>
+            )}
+
+            {saveError && (
+                <p className="mb-4 text-sm text-danger-500 flex items-center gap-1.5"><AlertCircle size={14} /> {saveError}</p>
             )}
 
             {budgetStats.length > 0 && (
@@ -171,7 +189,7 @@ export const BudgetTracker: React.FC<BudgetTrackerProps> = ({ transactions, cate
             ) : (
                 <div className="space-y-6">
                     {budgetStats.map((stat) => {
-                        const catIconInfo = expenseCategories.find(c => c.id === stat.categoryId)?.icon;
+                        const catIconInfo = expenseCategories.find(c => String(c.id) === String(stat.categoryId))?.icon;
                         const catIcon = catIconInfo && (LucideIcons as any)[catIconInfo]
                             ? (LucideIcons as any)[catIconInfo]
                             : LucideIcons.AlertCircle;
