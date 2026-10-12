@@ -284,7 +284,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
                             <select
                                 value={newCategoryType}
                                 onChange={(e) => setNewCategoryType(e.target.value as 'expense' | 'income')}
-                                className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                                className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white shrink-0"
                             >
                                 <option value="expense">Gastos</option>
                                 <option value="income">Ingresos</option>
@@ -294,7 +294,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
                                 value={newCategoryName}
                                 onChange={(e) => setNewCategoryName(e.target.value)}
                                 placeholder="Ej: Comida Rápida"
-                                className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                                className="flex-1 min-w-0 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white"
                             />
                         </div>
 

@@ -181,7 +181,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                                                 </span>
                                                 <MethodBadge method={t.method} />
                                             </div>
-                                            <span className="text-xs text-slate-500 truncate block">
+                                            <span className="text-xs text-slate-500 line-clamp-2 break-words block">
                                                 {t.description || 'Sin notas'} • {dayStr} {monthNames[monthIndex]} • {t.paymentMethod === 'cash' ? 'Efectivo' : 'Banco'}
                                             </span>
                                         </div>
