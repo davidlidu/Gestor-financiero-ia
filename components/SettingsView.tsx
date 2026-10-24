@@ -6,6 +6,8 @@ import { UserProfile, Category, Transaction } from '../types';
 import { StorageService } from '../services/storageService';
 import { GoogleService, GoogleStatus } from '../services/googleService';
 import { GmailImportModal } from './GmailImportModal';
+import { CategoryReview } from './CategoryReview';
+import { ShortcutSetup } from './ShortcutSetup';
 
 interface SettingsViewProps {
     user: UserProfile;
@@ -26,6 +28,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
     const [newCategoryType, setNewCategoryType] = useState<'expense' | 'income'>('expense');
     const [newCategoryName, setNewCategoryName] = useState('');
     const [newCategoryIcon, setNewCategoryIcon] = useState('Circle');
+
+    // Edición del icono de una categoría personal
+    const [iconEditId, setIconEditId] = useState<string | null>(null);
+    const isDefaultCat = (c: Category) => !!(c.isDefault ?? (c as any).is_default);
+    const handleChangeIcon = async (cat: Category, icon: string) => {
+        try {
+            const updated = await StorageService.updateCategoryIcon(String(cat.id), icon);
+            onUpdateCategories(categories.map(c => c.id === cat.id ? { ...c, icon: updated.icon } : c));
+            setIconEditId(null);
+        } catch (error) {
+            console.error('Error al cambiar el icono:', error);
+        }
+    };
 
     // --- Google / Gmail State ---
     const [googleStatus, setGoogleStatus] = useState<GoogleStatus | null>(null);
@@ -272,6 +287,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
                 </button>
             </div>
 
+            <ShortcutSetup />
+
             <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
                 <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><Wallet size={20} /> Gestión de Categorías</h2>
 
@@ -310,6 +327,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
                     </div>
                 </div>
 
+                <CategoryReview categories={categories} transactions={transactions} onChanged={() => onDataImported?.()} />
+
                 {/* Listas de Categorías */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div>
@@ -317,16 +336,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
                         <ul className="space-y-2">
                             {expenseCategories.map(cat => {
                                 const Icon = (LucideIcons as any)[cat.icon] || LucideIcons.Circle;
+                                const own = !isDefaultCat(cat);
                                 return (
-                                    <li key={cat.id} className="flex justify-between items-center p-3 bg-slate-900 rounded-lg group">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-slate-500"><Icon size={16} /></span>
-                                            <span>{cat.name}</span>
+                                    <li key={cat.id} className="p-3 bg-slate-900 rounded-lg group">
+                                        <div className="flex justify-between items-center gap-2">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                {own ? (
+                                                    <button onClick={() => setIconEditId(iconEditId === String(cat.id) ? null : String(cat.id))} className="text-slate-400 hover:text-primary-400 p-1 -m-1 rounded" title="Cambiar icono" aria-label={`Cambiar icono de ${cat.name}`}>
+                                                        <Icon size={16} />
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-slate-500"><Icon size={16} /></span>
+                                                )}
+                                                <span className="truncate">{cat.name}</span>
+                                                {!own && <span className="text-[9px] uppercase text-slate-600 shrink-0">sistema</span>}
+                                            </div>
+                                            {own && (
+                                                <button onClick={() => handleDeleteCategory(cat.id)} className="text-slate-600 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100 transition-all shrink-0" aria-label={`Eliminar ${cat.name}`}>
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            )}
                                         </div>
-                                        {!cat.isDefault && (
-                                            <button onClick={() => handleDeleteCategory(cat.id)} className="text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
-                                                <Trash2 size={16} />
-                                            </button>
+                                        {iconEditId === String(cat.id) && (
+                                            <div className="mt-3">
+                                                <IconSelector selectedIcon={cat.icon} onSelect={(icon) => handleChangeIcon(cat, icon)} />
+                                            </div>
                                         )}
                                     </li>
                                 )
@@ -338,16 +372,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
                         <ul className="space-y-2">
                             {incomeCategories.map(cat => {
                                 const Icon = (LucideIcons as any)[cat.icon] || LucideIcons.Circle;
+                                const own = !isDefaultCat(cat);
                                 return (
-                                    <li key={cat.id} className="flex justify-between items-center p-3 bg-slate-900 rounded-lg group">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-slate-500"><Icon size={16} /></span>
-                                            <span>{cat.name}</span>
+                                    <li key={cat.id} className="p-3 bg-slate-900 rounded-lg group">
+                                        <div className="flex justify-between items-center gap-2">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                {own ? (
+                                                    <button onClick={() => setIconEditId(iconEditId === String(cat.id) ? null : String(cat.id))} className="text-slate-400 hover:text-primary-400 p-1 -m-1 rounded" title="Cambiar icono" aria-label={`Cambiar icono de ${cat.name}`}>
+                                                        <Icon size={16} />
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-slate-500"><Icon size={16} /></span>
+                                                )}
+                                                <span className="truncate">{cat.name}</span>
+                                                {!own && <span className="text-[9px] uppercase text-slate-600 shrink-0">sistema</span>}
+                                            </div>
+                                            {own && (
+                                                <button onClick={() => handleDeleteCategory(cat.id)} className="text-slate-600 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100 transition-all shrink-0" aria-label={`Eliminar ${cat.name}`}>
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            )}
                                         </div>
-                                        {!cat.isDefault && (
-                                            <button onClick={() => handleDeleteCategory(cat.id)} className="text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
-                                                <Trash2 size={16} />
-                                            </button>
+                                        {iconEditId === String(cat.id) && (
+                                            <div className="mt-3">
+                                                <IconSelector selectedIcon={cat.icon} onSelect={(icon) => handleChangeIcon(cat, icon)} />
+                                            </div>
                                         )}
                                     </li>
                                 )

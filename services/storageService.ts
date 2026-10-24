@@ -230,6 +230,26 @@ export const StorageService = {
     }
   },
 
+  // Une varias categorías en una (mueve movimientos y presupuestos)
+  mergeCategories: async (sourceIds: string[], targetId: string): Promise<{ movedTransactions: number; movedBudgets: number; removed: number }> => {
+    const response = await fetch(`${API_URL}/categories/merge`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ sourceIds, targetId })
+    });
+    return await handleResponse(response);
+  },
+
+  // Cambia el icono de una categoría personal
+  updateCategoryIcon: async (id: string, icon: string): Promise<Category> => {
+    const response = await fetch(`${API_URL}/categories/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify({ icon })
+    });
+    return await handleResponse(response);
+  },
+
   // Eliminar categoría
   deleteCategory: async (id: string): Promise<void> => {
     try {

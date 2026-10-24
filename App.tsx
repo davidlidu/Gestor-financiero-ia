@@ -17,32 +17,10 @@ import { SettingsView } from './components/SettingsView';
 import { ReportsView } from './components/ReportsView';
 import { InstallmentsView } from './components/InstallmentsView';
 import { INITIAL_SAVINGS } from './constants';
-import { AVAILABLE_ICONS } from './components/IconSelector';
 import * as LucideIcons from 'lucide-react';
 import { ChevronDown, ChevronUp, History, Search } from 'lucide-react';
 import { ToastContainer, useToast } from './components/Toast';
 import { QuickActionsFAB } from './components/QuickActionsFAB';
-
-// Componente para seleccionar iconos
-const IconSelector = ({ selected, onSelect }: { selected: string, onSelect: (i: string) => void }) => {
-    return (
-        <div className="grid grid-cols-6 sm:grid-cols-8 gap-2 mt-2 p-2 bg-slate-900 rounded-lg border border-slate-700 max-h-48 overflow-y-auto custom-scrollbar">
-            {AVAILABLE_ICONS.map(iconName => {
-                const Icon = (LucideIcons as any)[iconName] || LucideIcons.HelpCircle;
-                return (
-                    <button
-                        key={iconName}
-                        onClick={() => onSelect(iconName)}
-                        title={iconName}
-                        className={`p-2 rounded-lg flex justify-center items-center transition-all ${selected === iconName ? 'bg-primary-600 text-white shadow-lg shadow-primary-500/30 scale-110' : 'text-slate-400 hover:bg-slate-700 hover:text-white'}`}
-                    >
-                        <Icon size={20} />
-                    </button>
-                )
-            })}
-        </div>
-    );
-};
 
 import { formatMoney } from './utils/format';
 

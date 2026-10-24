@@ -4,6 +4,7 @@ const { Pool } = require('pg');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
@@ -140,23 +141,29 @@ const initDB = async () => {
       );
     `);
 
-      // Buscamos si ya hay categorías por defecto insertadas
-    const catCheck = await pool.query("SELECT count(*) FROM categories WHERE is_default = TRUE");
-    
-    if (parseInt(catCheck.rows[0].count) === 0) {
-      console.log("Insertando categorías por defecto...");
-      
-      const allDefaults = [...DEFAULT_EXPENSE_CATEGORIES, ...DEFAULT_INCOME_CATEGORIES];
-      
-      for (const cat of allDefaults) {
-        // user_id es NULL para categorías globales del sistema
-        await pool.query(
-          "INSERT INTO categories (name, icon, type, is_default) VALUES ($1, $2, $3, TRUE)",
-          [cat.name, cat.icon, cat.type]
-        );
-      }
+    // Categorías por defecto: se insertan las que falten (por nombre y tipo). Así las nuevas llegan también
+    // a instalaciones existentes. Nunca se renombran ni borran las que ya hay (los movimientos guardan el nombre).
+    for (const cat of [...DEFAULT_EXPENSE_CATEGORIES, ...DEFAULT_INCOME_CATEGORIES]) {
+      await pool.query(
+        `INSERT INTO categories (name, icon, type, is_default)
+         SELECT $1, $2, $3, TRUE
+         WHERE NOT EXISTS (SELECT 1 FROM categories WHERE is_default = TRUE AND name = $1 AND type = $3)`,
+        [cat.name, cat.icon, cat.type]
+      );
     }
-    
+
+    // Categorías por defecto que cada usuario ocultó (p. ej. al unirlas con otra)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS hidden_categories (
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        category_id INTEGER REFERENCES categories(id) ON DELETE CASCADE,
+        PRIMARY KEY (user_id, category_id)
+      );
+    `);
+
+    // Token personal para el atajo del iPhone (se guarda solo su hash)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS shortcut_token_hash VARCHAR(64);`);
+
     console.log("Base de datos inicializada correctamente.");
   } catch (err) {
     console.error("Error inicializando DB:", err);
@@ -799,19 +806,96 @@ app.put('/api/user/settings', authenticateToken, async (req, res) => {
 });
 
 // OBTENER CATEGORÍAS (Mezcla las por defecto + las del usuario)
+// Se omiten las por defecto que el usuario ocultó y las que repiten el nombre de una categoría propia del mismo tipo.
 app.get('/api/categories', authenticateToken, async (req, res) => {
     try {
       const result = await pool.query(
-        `SELECT * FROM categories 
-         WHERE is_default = TRUE OR user_id = $1 
+        `SELECT * FROM categories c
+         WHERE (c.is_default = TRUE OR c.user_id = $1)
+           AND NOT EXISTS (SELECT 1 FROM hidden_categories h WHERE h.user_id = $1 AND h.category_id = c.id)
          ORDER BY type, name`,
         [req.user.id]
       );
-      res.json(result.rows);
+      const own = new Set(result.rows.filter(c => !c.is_default).map(c => c.type + '|' + normName(c.name)));
+      res.json(result.rows.filter(c => !c.is_default || !own.has(c.type + '|' + normName(c.name))));
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
   });
+
+// Une varias categorías en una: mueve sus movimientos y presupuestos a la categoría destino y quita las de origen
+// (las personales se borran; las por defecto se ocultan solo para este usuario).
+app.post('/api/categories/merge', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { sourceIds, targetId } = req.body;
+    if (!Array.isArray(sourceIds) || sourceIds.length === 0 || !targetId) {
+      return res.status(400).json({ error: 'sourceIds y targetId son requeridos.' });
+    }
+    const ids = [...new Set(sourceIds.map(Number))].filter(id => id && id !== Number(targetId));
+    if (ids.length === 0) return res.status(400).json({ error: 'Elige al menos una categoría distinta de la destino.' });
+
+    const visible = `(is_default = TRUE OR user_id = $1)`;
+    const tgt = await client.query(`SELECT * FROM categories WHERE id = $2 AND ${visible}`, [req.user.id, targetId]);
+    if (tgt.rows.length === 0) return res.status(404).json({ error: 'Categoría destino no encontrada.' });
+    const target = tgt.rows[0];
+    const src = await client.query(`SELECT * FROM categories WHERE id = ANY($2) AND ${visible}`, [req.user.id, ids]);
+    if (src.rows.length !== ids.length) return res.status(404).json({ error: 'Alguna categoría de origen no existe.' });
+    if (src.rows.some(c => c.type !== target.type)) return res.status(400).json({ error: 'Solo se pueden unir categorías del mismo tipo.' });
+
+    await client.query('BEGIN');
+    let movedTx = 0, movedBudgets = 0;
+    for (const c of src.rows) {
+      // Movimientos: se guardan por nombre (se compara sin tildes/espacios para atrapar "Regalos " y similares)
+      const tx = await client.query(
+        `UPDATE transactions SET category = $1
+          WHERE user_id = $2 AND type = $3
+            AND lower(trim(translate(category, 'ÁÉÍÓÚáéíóúÜüÑñ', 'AEIOUaeiouUuNn'))) = $4`,
+        [target.name, req.user.id, target.type, normName(c.name)]
+      );
+      movedTx += tx.rowCount;
+
+      // Presupuestos: si el destino ya tiene presupuesto ese mes se suman; si no, se reasignan
+      const bud = await client.query('SELECT * FROM budgets WHERE user_id = $1 AND category_id = $2', [req.user.id, String(c.id)]);
+      for (const b of bud.rows) {
+        const up = await client.query(
+          `UPDATE budgets SET amount = amount + $1 WHERE user_id = $2 AND category_id = $3 AND month_year = $4 RETURNING id`,
+          [b.amount, req.user.id, String(target.id), b.month_year]
+        );
+        if (up.rows.length > 0) await client.query('DELETE FROM budgets WHERE id = $1', [b.id]);
+        else await client.query('UPDATE budgets SET category_id = $1, category_name = $2 WHERE id = $3', [String(target.id), target.name, b.id]);
+        movedBudgets++;
+      }
+
+      if (c.is_default) {
+        await client.query('INSERT INTO hidden_categories (user_id, category_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [req.user.id, c.id]);
+      } else {
+        await client.query('DELETE FROM categories WHERE id = $1 AND user_id = $2', [c.id, req.user.id]);
+      }
+    }
+    await client.query('COMMIT');
+    res.json({ success: true, movedTransactions: movedTx, movedBudgets, removed: src.rows.length });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('[categories/merge] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// Cambiar el icono de una categoría personal
+app.put('/api/categories/:id', authenticateToken, async (req, res) => {
+  try {
+    const { icon } = req.body;
+    if (!icon) return res.status(400).json({ error: 'icon es requerido.' });
+    const r = await pool.query('UPDATE categories SET icon = $1 WHERE id = $2 AND user_id = $3 RETURNING *', [icon, req.params.id, req.user.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Solo puedes cambiar el icono de tus categorías personales.' });
+    res.json(r.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
   
   // CREAR CATEGORÍA PERSONALIZADA
   app.post('/api/categories', authenticateToken, async (req, res) => {
@@ -848,14 +932,35 @@ app.delete('/api/categories/:id', authenticateToken, async (req, res) => {
 
 // Constantes por defecto
 const DEFAULT_EXPENSE_CATEGORIES = [
-    { name: 'Alimentación', icon: 'Utensils', type: 'expense' },
+    // Originales (no renombrar: los movimientos existentes guardan estos nombres)
+    { name: 'Alimentación', icon: 'ShoppingCart', type: 'expense' },
     { name: 'Transporte', icon: 'Bus', type: 'expense' },
     { name: 'Vivienda', icon: 'Home', type: 'expense' },
     { name: 'Servicios', icon: 'Zap', type: 'expense' },
     { name: 'Entretenimiento', icon: 'Film', type: 'expense' },
-    { name: 'Salud', icon: 'Heart', type: 'expense' },
-    { name: 'Educación', icon: 'Book', type: 'expense' },
-    { name: 'Ropa', icon: 'ShoppingBag', type: 'expense' }
+    { name: 'Salud', icon: 'HeartPulse', type: 'expense' },
+    { name: 'Educación', icon: 'GraduationCap', type: 'expense' },
+    { name: 'Ropa', icon: 'Shirt', type: 'expense' },
+    // Gastos comunes adicionales
+    { name: 'Restaurantes y domicilios', icon: 'UtensilsCrossed', type: 'expense' },
+    { name: 'Internet y telefonía', icon: 'Wifi', type: 'expense' },
+    { name: 'Gasolina', icon: 'Fuel', type: 'expense' },
+    { name: 'Parqueaderos y peajes', icon: 'ParkingCircle', type: 'expense' },
+    { name: 'Mantenimiento vehículo', icon: 'Wrench', type: 'expense' },
+    { name: 'Seguros', icon: 'ShieldCheck', type: 'expense' },
+    { name: 'Suscripciones', icon: 'Repeat', type: 'expense' },
+    { name: 'Cuidado personal', icon: 'Scissors', type: 'expense' },
+    { name: 'Hogar y aseo', icon: 'Sofa', type: 'expense' },
+    { name: 'Mascotas', icon: 'PawPrint', type: 'expense' },
+    { name: 'Hijos', icon: 'Baby', type: 'expense' },
+    { name: 'Regalos', icon: 'Gift', type: 'expense' },
+    { name: 'Viajes', icon: 'Plane', type: 'expense' },
+    { name: 'Deudas y créditos', icon: 'Landmark', type: 'expense' },
+    { name: 'Tarjeta de crédito', icon: 'CreditCard', type: 'expense' },
+    { name: 'Impuestos', icon: 'Receipt', type: 'expense' },
+    { name: 'Comisiones bancarias', icon: 'Percent', type: 'expense' },
+    { name: 'Donaciones', icon: 'HandHeart', type: 'expense' },
+    { name: 'Otros', icon: 'CircleEllipsis', type: 'expense' },
   ];
   
   const DEFAULT_INCOME_CATEGORIES = [
@@ -863,9 +968,14 @@ const DEFAULT_EXPENSE_CATEGORIES = [
     { name: 'Freelance', icon: 'Laptop', type: 'income' },
     { name: 'Facturación', icon: 'FileText', type: 'income' },
     { name: 'Regalos', icon: 'Gift', type: 'income' },
-    { name: 'Inversiones', icon: 'TrendingUp', type: 'income' }
+    { name: 'Inversiones', icon: 'TrendingUp', type: 'income' },
+    { name: 'Arriendos recibidos', icon: 'Building2', type: 'income' },
+    { name: 'Reembolsos', icon: 'RotateCcw', type: 'income' },
+    { name: 'Otros', icon: 'CircleEllipsis', type: 'income' },
   ];
 
+  // Normaliza un nombre para comparar: sin tildes, mayúsculas ni espacios sobrantes
+  const normName = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
   // RUTA PARA PROCESAR IA (Proxy Seguro)
 app.post('/api/ai/process', authenticateToken, async (req, res) => {
@@ -1406,6 +1516,163 @@ const runMonthEndAnalyses = async () => {
   }
 };
 setInterval(runMonthEndAnalyses, 30 * 60 * 1000);
+
+// ================= ATAJO DE IPHONE (SMS DE COMPRAS) =================
+// El atajo del iPhone envía el texto del SMS del banco con un token personal; el servidor extrae el movimiento y lo guarda.
+const sha256 = (v) => crypto.createHash('sha256').update(String(v)).digest('hex');
+
+// "$1.250.000,00" | "1,250,000.00" | "42.000" -> número
+const parseCopAmount = (raw) => {
+  const r = String(raw).trim();
+  const dec = r.match(/^(.*)[.,](\d{2})$/);
+  const intPart = dec ? dec[1] : r;
+  const n = parseInt(intPart.replace(/\D/g, ''), 10);
+  if (isNaN(n)) return null;
+  return dec ? n + parseInt(dec[2], 10) / 100 : n;
+};
+
+// Extracción sin IA: monto (el primero con $ o COP, o el primer número con separador de miles) y tipo por palabras clave
+const parseSmsBasic = (text) => {
+  const t = String(text || '');
+  const m = t.match(/(?:\$|COP\s*)\s*(\d[\d.,]*)/i) || t.match(/\b(\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{2})?)\b/);
+  const amount = m ? parseCopAmount(m[1]) : null;
+  const income = /(recibi|recibiste|te (enviaron|transfirieron|consignaron)|abono|consignaci|dep[oó]sito|ingreso|reembolso|devoluci)/i.test(t);
+  const d = t.match(/\b(\d{2})[\/-](\d{2})[\/-](\d{4})\b/); // dd/mm/aaaa
+  const date = d ? `${d[3]}-${d[2]}-${d[1]}` : null;
+  return { amount, type: income ? 'income' : 'expense', date };
+};
+
+const parseSmsTransaction = async (userId, text) => {
+  const basic = parseSmsBasic(text);
+  const today = bogotaNow().toISOString().slice(0, 10);
+  const validDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '') && d <= today ? d : null;
+  let out = {
+    isTransaction: !!basic.amount,
+    type: basic.type,
+    amount: basic.amount,
+    date: validDate(basic.date) || today,
+    description: String(text).replace(/\s+/g, ' ').trim().slice(0, 120),
+    category: 'Otros',
+    paymentMethod: 'transfer',
+  };
+
+  const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+  if (apiKey) {
+    try {
+      const cats = await pool.query(
+        `SELECT c.name, c.type FROM categories c
+          WHERE (c.is_default = TRUE OR c.user_id = $1)
+            AND NOT EXISTS (SELECT 1 FROM hidden_categories h WHERE h.user_id = $1 AND h.category_id = c.id)`,
+        [userId]
+      );
+      const exp = cats.rows.filter(c => c.type === 'expense').map(c => c.name);
+      const inc = cats.rows.filter(c => c.type === 'income').map(c => c.name);
+      const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({
+        model: 'gemini-2.5-flash-lite',
+        generationConfig: { responseMimeType: 'application/json' },
+      });
+      const prompt = `Analiza este SMS o notificación bancaria de Colombia y extrae el movimiento de dinero.
+Devuelve SOLO un JSON: {"isTransaction": boolean (false si es publicidad, código OTP, aviso de seguridad o rechazo),
+"type": "expense" | "income", "amount": número en pesos sin símbolos, "date": "YYYY-MM-DD" o null,
+"description": "comercio o persona y medio, corto (ej: 'Rappi - T. débito')",
+"category": una de gastos ${JSON.stringify(exp)} o de ingresos ${JSON.stringify(inc)} (usa "Otros" si ninguna encaja),
+"paymentMethod": "cash" si es retiro de efectivo, si no "transfer"}.
+Hoy es ${today}. SMS: ${JSON.stringify(String(text).slice(0, 1000))}`;
+      const r = await model.generateContent(prompt);
+      const ai = JSON.parse((await r.response.text()).replace(/```json/gi, '').replace(/```/g, '').trim());
+      out = {
+        isTransaction: ai.isTransaction !== false && !!(basic.amount || ai.amount),
+        type: ai.type === 'income' ? 'income' : 'expense',
+        // El monto leído directamente del texto es más confiable que el de la IA
+        amount: basic.amount || Number(ai.amount) || null,
+        date: validDate(basic.date) || validDate(ai.date) || today,
+        description: String(ai.description || out.description).slice(0, 120),
+        category: String(ai.category || 'Otros'),
+        paymentMethod: ai.paymentMethod === 'cash' ? 'cash' : 'transfer',
+      };
+    } catch (e) {
+      console.error('[shortcut] IA no disponible, se usa extracción básica:', e.message);
+    }
+  }
+  if (!out.amount || out.amount <= 0) out.isTransaction = false;
+  return out;
+};
+
+// Autenticación por token del atajo (header x-shortcut-token o Authorization: Bearer fin_...)
+const authenticateShortcut = async (req, res, next) => {
+  try {
+    const bearer = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '');
+    const token = req.headers['x-shortcut-token'] || (bearer.startsWith('fin_') ? bearer : '');
+    if (!token) return res.status(401).json({ error: 'Falta el token del atajo.' });
+    const r = await pool.query('SELECT id FROM users WHERE shortcut_token_hash = $1', [sha256(token)]);
+    if (r.rows.length === 0) return res.status(401).json({ error: 'Token inválido o revocado.' });
+    req.user = { id: r.rows[0].id };
+    next();
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// Estado / generar (rota) / revocar el token. El token solo se muestra al generarlo.
+app.get('/api/shortcut/token', authenticateToken, async (req, res) => {
+  const r = await pool.query('SELECT shortcut_token_hash FROM users WHERE id = $1', [req.user.id]);
+  res.json({ active: !!(r.rows[0] && r.rows[0].shortcut_token_hash) });
+});
+app.post('/api/shortcut/token', authenticateToken, async (req, res) => {
+  try {
+    const token = 'fin_' + crypto.randomBytes(24).toString('hex');
+    await pool.query('UPDATE users SET shortcut_token_hash = $1 WHERE id = $2', [sha256(token), req.user.id]);
+    res.json({ token });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.delete('/api/shortcut/token', authenticateToken, async (req, res) => {
+  await pool.query('UPDATE users SET shortcut_token_hash = NULL WHERE id = $1', [req.user.id]);
+  res.json({ success: true });
+});
+
+// Probar la lectura de un SMS desde la app (no guarda nada)
+app.post('/api/shortcut/preview', authenticateToken, async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text || !String(text).trim()) return res.status(400).json({ error: 'Pega el texto del mensaje.' });
+    res.json(await parseSmsTransaction(req.user.id, text));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint que llama el atajo del iPhone con el texto del SMS
+app.post('/api/shortcut/sms', authenticateShortcut, async (req, res) => {
+  try {
+    const text = req.body && (req.body.text || req.body.mensaje);
+    if (!text || !String(text).trim()) return res.status(400).json({ error: 'Falta el campo "text" con el mensaje.' });
+    const p = await parseSmsTransaction(req.user.id, text);
+    if (!p.isTransaction) return res.json({ created: false, message: 'El mensaje no parece un movimiento de dinero; no se registró.' });
+
+    // Si el atajo se dispara dos veces con el mismo SMS, no se duplica
+    const ref = 'sms:' + sha256(String(text).trim()).slice(0, 40);
+    const r = await pool.query(
+      `INSERT INTO transactions (user_id, amount, description, date, category, type, method, payment_method, external_ref)
+       VALUES ($1, $2, $3, $4, $5, $6, 'shortcut', $7, $8)
+       ON CONFLICT (user_id, external_ref) WHERE external_ref IS NOT NULL DO NOTHING
+       RETURNING id`,
+      [req.user.id, p.amount, p.description, p.date, p.category, p.type, p.paymentMethod, ref]
+    );
+    if (r.rows.length === 0) return res.json({ created: false, duplicated: true, message: 'Ese mensaje ya estaba registrado.' });
+    const signo = p.type === 'income' ? '+' : '-';
+    res.status(201).json({
+      created: true,
+      id: String(r.rows[0].id),
+      message: `Registrado ${signo}$${Math.round(p.amount).toLocaleString('es-CO')} en ${p.category}`,
+      transaction: p,
+    });
+  } catch (err) {
+    console.error('[shortcut/sms] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // --- START SERVER ---
 const PORT = process.env.PORT || 4000;

@@ -2,9 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { StorageService } from '../services/storageService';
 import { formatMoney } from '../utils/format';
 import { Transaction, Category, Budget } from '../types';
-import { Plus, Edit2, Trash2, PiggyBank, AlertCircle, ChevronLeft, ChevronRight, Copy } from 'lucide-react';
+import { Plus, Edit2, Trash2, PiggyBank, AlertCircle, ChevronLeft, ChevronRight, Copy, Sparkles } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { BudgetInsights } from './BudgetInsights';
+import { BudgetSuggestions } from './BudgetSuggestions';
 
 interface BudgetTrackerProps {
     transactions: Transaction[];
@@ -45,6 +46,7 @@ export const BudgetTracker: React.FC<BudgetTrackerProps> = ({ transactions, cate
 
     // Copiar presupuestos de otro mes
     const [isCopying, setIsCopying] = useState(false);
+    const [isSuggesting, setIsSuggesting] = useState(false);
     const [copySource, setCopySource] = useState('');
     const [copying, setCopying] = useState(false);
     const [copyMessage, setCopyMessage] = useState('');
@@ -61,6 +63,7 @@ export const BudgetTracker: React.FC<BudgetTrackerProps> = ({ transactions, cate
         // Al cambiar de mes se cierran los formularios y se limpian los avisos
         setIsAdding(false);
         setIsCopying(false);
+        setIsSuggesting(false);
         setEditingCategoryId(null);
         setSelectedCategory('');
         setBudgetAmount('');
@@ -195,7 +198,7 @@ export const BudgetTracker: React.FC<BudgetTrackerProps> = ({ transactions, cate
     const prevMonth = shiftMonth(currentMonth, -1);
 
     return (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 overflow-hidden relative">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 sm:p-6 overflow-hidden relative">
             <div className="flex justify-between items-start gap-3 flex-wrap mb-6">
                 <div>
                     <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -216,7 +219,13 @@ export const BudgetTracker: React.FC<BudgetTrackerProps> = ({ transactions, cate
                     {!isAdding && (
                         <>
                             <button
-                                onClick={() => { setIsCopying(!isCopying); setCopyMessage(''); }}
+                                onClick={() => { setIsSuggesting(!isSuggesting); setIsCopying(false); setCopyMessage(''); }}
+                                className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-700/60 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 px-3 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 text-sm"
+                            >
+                                <Sparkles size={16} /> Sugerir con mis gastos
+                            </button>
+                            <button
+                                onClick={() => { setIsCopying(!isCopying); setIsSuggesting(false); setCopyMessage(''); }}
                                 className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-700/60 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 px-3 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 text-sm"
                             >
                                 <Copy size={16} /> Copiar de otro mes
@@ -258,6 +267,17 @@ export const BudgetTracker: React.FC<BudgetTrackerProps> = ({ transactions, cate
                         </button>
                     </div>
                 </div>
+            )}
+
+            {isSuggesting && (
+                <BudgetSuggestions
+                    month={currentMonth}
+                    transactions={transactions}
+                    categories={expenseCategories}
+                    existing={budgets}
+                    onApplied={(list) => { setBudgets(list); setIsSuggesting(false); setCopyMessage('Presupuestos sugeridos aplicados. Puedes ajustar cualquiera con el lápiz.'); }}
+                    onClose={() => setIsSuggesting(false)}
+                />
             )}
 
             {copyMessage && (
