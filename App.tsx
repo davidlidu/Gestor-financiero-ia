@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Settings, Plus, LayoutDashboard, Wallet, PieChart, Menu, LogOut, Trash2, Edit2, TrendingUp, TrendingDown, DollarSign, Pencil, Filter, X, Lock, Mail, User as UserIcon, ShieldCheck, PiggyBank, ArrowRightLeft, Link as LinkIcon, Save, Camera, UploadCloud, Download, CalendarDays, ChevronLeft } from 'lucide-react';
-import { Transaction, UserProfile, SavingsGoal, AuthState, Category } from './types';
+import { Transaction, UserProfile, SavingsGoal, AuthState, Category, AccountAlias } from './types';
 import { StorageService } from './services/storageService';
 import { AuthService } from './services/authService';
 import { BalanceAreaChart, CategoryPieChart, ComparisonBarChart } from './components/Charts';
@@ -23,6 +23,7 @@ import { ToastContainer, useToast } from './components/Toast';
 import { QuickActionsFAB } from './components/QuickActionsFAB';
 
 import { formatMoney } from './utils/format';
+import { annotateAccounts } from './utils/accounts';
 
 function App() {
     // --- Auth State ---
@@ -46,6 +47,7 @@ function App() {
 
     // ✅ CORRECCIÓN: Estado de categorías aquí dentro y como array de objetos
     const [categories, setCategories] = useState<Category[]>([]);
+    const [accounts, setAccounts] = useState<AccountAlias[]>([]);
 
     // Filtramos las categorías para usarlas en la UI (Variables derivadas, no estados duplicados)
     const expenseCategories = categories.filter(c => c.type === 'expense');
@@ -158,14 +160,16 @@ function App() {
     // --- Cargar Datos (Actualiza tu loadUserData) ---
     const loadUserData = async () => {
         try {
-            const [txData, savingsData, catsData] = await Promise.all([
+            const [txData, savingsData, catsData, accountsData] = await Promise.all([
                 StorageService.getTransactions(),
                 StorageService.getSavings(),
-                StorageService.getCategories() // <--- Ahora cargamos desde API
+                StorageService.getCategories(), // <--- Ahora cargamos desde API
+                StorageService.getAccounts()
             ]);
             setTransactions(txData);
             setSavings(savingsData);
             setCategories(catsData);
+            setAccounts(accountsData);
         } catch (error) { console.error(error); }
     };
 
@@ -771,9 +775,9 @@ function App() {
                 )}
 
                 {/* --- DASHBOARD VIEW --- */}
-                {view === 'dashboard' && (
+                {(view === 'dashboard' || view === 'transactions') && (
                     <>
-                        {/* Top Stats - Hero Cards with Trend Indicators */}
+                        {/* Top Stats - Hero Cards with Trend Indicators (Inicio y Movimientos) */}
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
                             {/* Balance Card */}
                             <div className="col-span-2 bg-gradient-to-br from-slate-800 to-slate-800/80 rounded-2xl p-5 md:p-6 border border-slate-700 shadow-lg relative overflow-hidden">
@@ -821,7 +825,11 @@ function App() {
                                 )}
                             </div>
                         </div>
+                    </>
+                )}
 
+                {view === 'dashboard' && (
+                    <>
                         {/* Secondary row: Savings + Recent */}
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
                             {/* Savings Summary */}
@@ -873,7 +881,7 @@ function App() {
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <p className="text-sm font-medium text-slate-200 truncate">{t.category}</p>
-                                                    <p className="text-[10px] text-slate-500 truncate">{t.description || 'Sin notas'} • {dd} {mNames[parseInt(mm) - 1]}</p>
+                                                    <p className="text-[10px] text-slate-500 truncate">{annotateAccounts(t.description || 'Sin notas', accounts)} • {dd} {mNames[parseInt(mm) - 1]}</p>
                                                 </div>
                                                 <span className={`font-bold text-sm flex-shrink-0 ${t.type === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>
                                                     {t.type === 'income' ? '+' : '-'}${formatMoney(t.amount)}
@@ -955,6 +963,7 @@ function App() {
                         onDeleteTransaction={handleDeleteTransaction}
                         onExportCSV={handleExportCSV}
                         onOpenTransferModal={() => setIsTransferModalOpen(true)}
+                        accounts={accounts}
                     />
                 )}
 
@@ -1083,6 +1092,8 @@ function App() {
                         onUpdateCategories={setCategories}
                         transactions={transactions}
                         onDataImported={loadUserData}
+                        accounts={accounts}
+                        onUpdateAccounts={setAccounts}
                     />
                 )}
 

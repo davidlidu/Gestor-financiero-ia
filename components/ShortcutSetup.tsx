@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Smartphone, Copy, Check, Loader2, KeyRound, FlaskConical, AlertTriangle } from 'lucide-react';
-import { ShortcutService, SHORTCUT_ENDPOINT, SmsPreview } from '../services/shortcutService';
+import { Smartphone, Copy, Check, Loader2, KeyRound, FlaskConical, AlertTriangle, X, Plus } from 'lucide-react';
+import { ShortcutService, SHORTCUT_ENDPOINT, SmsPreview, SmsRules } from '../services/shortcutService';
 import { formatMoney } from '../utils/format';
 
 const CopyButton: React.FC<{ value: string; label: string }> = ({ value, label }) => {
@@ -29,6 +29,41 @@ const Field: React.FC<{ label: string; value: string }> = ({ label, value }) => 
   </div>
 );
 
+// Lista editable de frases (chips)
+const PhraseList: React.FC<{ title: string; color: string; items: string[]; onChange: (v: string[]) => void }> = ({ title, color, items, onChange }) => {
+  const [draft, setDraft] = useState('');
+  const add = () => {
+    const v = draft.trim();
+    if (v && !items.some(i => i.toLowerCase() === v.toLowerCase())) onChange([...items, v]);
+    setDraft('');
+  };
+  return (
+    <div>
+      <p className={`text-xs font-semibold mb-1.5 ${color}`}>{title}</p>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {items.map(i => (
+          <span key={i} className="inline-flex items-center gap-1 bg-slate-900 border border-slate-600 rounded-full pl-2.5 pr-1 py-0.5 text-xs text-slate-200">
+            {i}
+            <button type="button" onClick={() => onChange(items.filter(x => x !== i))} className="text-slate-500 hover:text-red-400 p-0.5" aria-label={`Quitar ${i}`}><X size={12} /></button>
+          </span>
+        ))}
+        {items.length === 0 && <span className="text-xs text-slate-500">Sin frases</span>}
+      </div>
+      <div className="flex gap-2">
+        <input
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
+          placeholder="Ej: Recibiste un pago"
+          className="flex-1 min-w-0 bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white"
+          aria-label={`Nueva frase de ${title}`}
+        />
+        <button type="button" onClick={add} className="shrink-0 bg-slate-700 hover:bg-slate-600 text-white text-xs px-2.5 rounded-lg flex items-center gap-1"><Plus size={13} /> Agregar</button>
+      </div>
+    </div>
+  );
+};
+
 export const ShortcutSetup: React.FC = () => {
   const [active, setActive] = useState<boolean | null>(null);
   const [token, setToken] = useState('');
@@ -38,7 +73,23 @@ export const ShortcutSetup: React.FC = () => {
   const [testing, setTesting] = useState(false);
   const [preview, setPreview] = useState<SmsPreview | null>(null);
 
-  useEffect(() => { ShortcutService.status().then(s => setActive(s.active)).catch(() => setActive(false)); }, []);
+  const [rules, setRules] = useState<SmsRules | null>(null);
+  const [rulesSaved, setRulesSaved] = useState(true);
+  const [savingRules, setSavingRules] = useState(false);
+
+  useEffect(() => {
+    ShortcutService.status().then(s => setActive(s.active)).catch(() => setActive(false));
+    ShortcutService.getRules().then(setRules).catch(() => setRules({ income: [], expense: [] }));
+  }, []);
+
+  const changeRules = (r: SmsRules) => { setRules(r); setRulesSaved(false); };
+  const saveRules = async () => {
+    if (!rules) return;
+    setSavingRules(true); setError('');
+    try { setRules(await ShortcutService.saveRules(rules)); setRulesSaved(true); }
+    catch (e: any) { setError(e.message); }
+    finally { setSavingRules(false); }
+  };
 
   const generate = async () => {
     if (active && !confirm('Se creará un token nuevo y el atajo actual dejará de funcionar hasta que lo actualices. ¿Continuar?')) return;
@@ -102,16 +153,49 @@ export const ShortcutSetup: React.FC = () => {
             <Field label="Nombre del encabezado" value="x-shortcut-token" />
           </div>
 
+          {rules && (
+            <div className="rounded-lg border border-slate-700 p-3 space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-200">Frases que reconoce el atajo</p>
+                <p className="text-xs text-slate-500">Solo se registran los mensajes que contengan alguna de estas frases (sin importar mayúsculas ni tildes), y la frase define si es ingreso o gasto.</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <PhraseList title="Ingresos" color="text-emerald-400" items={rules.income} onChange={income => changeRules({ ...rules, income })} />
+                <PhraseList title="Gastos" color="text-red-400" items={rules.expense} onChange={expense => changeRules({ ...rules, expense })} />
+              </div>
+              <div className="flex items-center justify-end gap-3">
+                {rulesSaved ? <span className="text-xs text-slate-500">Guardado</span> : <span className="text-xs text-amber-400">Cambios sin guardar</span>}
+                <button onClick={saveRules} disabled={rulesSaved || savingRules} className="bg-primary-600 hover:bg-primary-500 disabled:opacity-40 text-white text-xs font-medium px-3 py-1.5 rounded-lg">
+                  {savingRules ? 'Guardando...' : 'Guardar frases'}
+                </button>
+              </div>
+            </div>
+          )}
+
           <details className="rounded-lg border border-slate-700 p-3" open={!!token}>
             <summary className="text-sm font-semibold text-slate-200 cursor-pointer">Cómo crear la automatización en el iPhone</summary>
             <ol className="mt-3 space-y-2.5 text-sm text-slate-300 list-decimal pl-5">
-              <li>Abre la app <b>Atajos</b> → pestaña <b>Automatización</b> → <b>+</b> → elige <b>Mensaje</b>.</li>
-              <li>En <b>"El mensaje contiene"</b> escribe una palabra que traigan los mensajes de compra de tu banco (por ejemplo <i>Bancolombia</i>). Si quieres, en <b>Remitente</b> elige el número del banco.</li>
-              <li>Marca <b>Ejecutar inmediatamente</b> (iOS 17 o superior) y toca <b>Siguiente</b> → <b>Nueva automatización en blanco</b>.</li>
+              <li>Abre la app <b>Atajos</b> → pestaña <b>Automatización</b> → <b>+</b> (Nueva automatización) → <b>Mensaje</b>.</li>
+              <li>
+                En <b>Remitente</b> elige el contacto o número desde el que te llegan los SMS del banco y deja <b>"El mensaje contiene"</b> vacío.
+                La app filtra con tus frases de arriba, así que basta <b>una sola automatización</b> para ingresos y gastos.
+                <span className="block text-xs text-slate-500 mt-1">
+                  Alternativa: si prefieres filtrar en el iPhone, crea una automatización por frase poniéndola en "El mensaje contiene"
+                  (Recibiste un pago, Recibiste una transferencia, Compraste, Pagaste, Transferiste), con la misma acción del paso 5.
+                </span>
+              </li>
+              <li>Marca <b>Ejecutar inmediatamente</b> (iOS 17 o superior) y desactiva <b>Notificar al ejecutar</b> si no quieres el aviso. Toca <b>Siguiente</b> → <b>Nueva automatización en blanco</b>.</li>
               <li>Agrega la acción <b>Obtener contenido de URL</b> y pega la <b>URL</b> de arriba.</li>
-              <li>Toca la flecha <b>›</b> de la acción: <b>Método</b> = <b>POST</b>; en <b>Encabezados</b> agrega <code>x-shortcut-token</code> con tu <b>token</b> como valor.</li>
-              <li>En <b>Cuerpo de la solicitud</b> elige <b>JSON</b>, agrega un campo de <b>Texto</b> con clave <code>text</code> y como valor la variable <b>Entrada del atajo</b> (el contenido del mensaje).</li>
-              <li>Opcional: agrega <b>Mostrar notificación</b> con <b>Contenido de URL</b> para ver algo como <i>"Registrado -$42.000 en Restaurantes y domicilios"</i>.</li>
+              <li>
+                Toca la flecha <b>›</b> de la acción y configura:
+                <ul className="list-disc pl-5 mt-1 space-y-1 text-slate-400">
+                  <li><b>Método:</b> POST</li>
+                  <li><b>Encabezados:</b> agrega uno con clave <code>x-shortcut-token</code> y como valor tu <b>token</b>.</li>
+                  <li><b>Cuerpo de la solicitud:</b> JSON → agrega un campo de tipo <b>Texto</b> con clave <code>text</code>; en el valor toca la variable <b>Entrada del atajo</b> (si te deja elegir, su propiedad <b>Contenido</b>).</li>
+                </ul>
+              </li>
+              <li>Opcional: agrega <b>Mostrar notificación</b> con la variable <b>Contenido de URL</b> para ver la respuesta, por ejemplo <i>"Registrado -$42.000 en Restaurantes y domicilios"</i>.</li>
+              <li>Pruébalo pegando un mensaje real en el probador de abajo antes de esperar una compra.</li>
             </ol>
             <p className="mt-3 text-xs text-slate-500">
               Solo funciona con <b>mensajes de texto (SMS/iMessage)</b>; las notificaciones push de la app del banco no las puede leer un atajo.
@@ -140,10 +224,13 @@ export const ShortcutSetup: React.FC = () => {
                   </p>
                   <p className="text-slate-300">{preview.description}</p>
                   <p className="text-xs text-slate-500">{preview.category} · {preview.date} · {preview.paymentMethod === 'cash' ? 'Efectivo' : 'Banco'}</p>
+                  {preview.accounts && preview.accounts.length > 0 && (
+                    <p className="text-xs text-sky-400">Cuentas reconocidas: {preview.accounts.map(a => a.label + (a.isOwn ? ' (tuya)' : '')).join(', ')}</p>
+                  )}
                   <p className="text-[11px] text-slate-600">Es solo una vista previa: no se guardó nada.</p>
                 </div>
               ) : (
-                <p className="text-sm text-amber-400">Este mensaje no parece un movimiento de dinero; el atajo lo ignoraría.</p>
+                <p className="text-sm text-amber-400">El atajo ignoraría este mensaje: {preview.reason || 'no parece un movimiento de dinero.'}</p>
               )
             )}
           </div>

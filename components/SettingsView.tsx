@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Save, Link as LinkIcon, Wallet, Trash2, X, User as UserIcon, UploadCloud, Lock, Mail, Download, Loader2, CheckCircle2 } from 'lucide-react';
+import { Settings, Save, Link as LinkIcon, Wallet, Trash2, X, User as UserIcon, UploadCloud, Lock, Mail, Download, Loader2, CheckCircle2, Pencil } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { IconSelector } from './IconSelector';
-import { UserProfile, Category, Transaction } from '../types';
+import { UserProfile, Category, Transaction, AccountAlias } from '../types';
 import { StorageService } from '../services/storageService';
 import { GoogleService, GoogleStatus } from '../services/googleService';
 import { GmailImportModal } from './GmailImportModal';
 import { CategoryReview } from './CategoryReview';
 import { ShortcutSetup } from './ShortcutSetup';
+import { AccountsSetup } from './AccountsSetup';
 
 interface SettingsViewProps {
     user: UserProfile;
@@ -16,9 +17,11 @@ interface SettingsViewProps {
     onUpdateCategories: (newCategories: Category[]) => void;
     transactions?: Transaction[];
     onDataImported?: () => void;
+    accounts?: AccountAlias[];
+    onUpdateAccounts?: (accounts: AccountAlias[]) => void;
 }
 
-export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, categories, onUpdateCategories, transactions = [], onDataImported }) => {
+export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, categories, onUpdateCategories, transactions = [], onDataImported, accounts = [], onUpdateAccounts }) => {
     // --- Local Profile State ---
     const [avatar, setAvatar] = useState(user.avatar || '');
     const [newPassword, setNewPassword] = useState('');
@@ -29,16 +32,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
     const [newCategoryName, setNewCategoryName] = useState('');
     const [newCategoryIcon, setNewCategoryIcon] = useState('Circle');
 
-    // Edición del icono de una categoría personal
+    // Edición de una categoría personal (nombre e icono)
     const [iconEditId, setIconEditId] = useState<string | null>(null);
+    const [editName, setEditName] = useState('');
+    const [editIcon, setEditIcon] = useState('Circle');
+    const [editSaving, setEditSaving] = useState(false);
+    const [editError, setEditError] = useState('');
     const isDefaultCat = (c: Category) => !!(c.isDefault ?? (c as any).is_default);
-    const handleChangeIcon = async (cat: Category, icon: string) => {
+    const startEditCategory = (cat: Category) => {
+        if (iconEditId === String(cat.id)) { setIconEditId(null); return; }
+        setIconEditId(String(cat.id));
+        setEditName(cat.name.trim());
+        setEditIcon(cat.icon || 'Circle');
+        setEditError('');
+    };
+    const handleSaveCategory = async (cat: Category) => {
+        const name = editName.trim();
+        if (!name) { setEditError('El nombre no puede estar vacío.'); return; }
+        setEditSaving(true); setEditError('');
         try {
-            const updated = await StorageService.updateCategoryIcon(String(cat.id), icon);
-            onUpdateCategories(categories.map(c => c.id === cat.id ? { ...c, icon: updated.icon } : c));
+            const renamed = name !== cat.name;
+            await StorageService.updateCategory(String(cat.id), { name, icon: editIcon });
             setIconEditId(null);
-        } catch (error) {
-            console.error('Error al cambiar el icono:', error);
+            // Si cambió el nombre, sus movimientos también cambiaron: se recargan los datos
+            if (renamed) onDataImported?.();
+            else onUpdateCategories(categories.map(c => c.id === cat.id ? { ...c, icon: editIcon } : c));
+        } catch (error: any) {
+            setEditError(error?.message || 'No se pudo guardar la categoría.');
+        } finally {
+            setEditSaving(false);
         }
     };
 
@@ -289,6 +311,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
 
             <ShortcutSetup />
 
+            <AccountsSetup accounts={accounts} onChange={(a) => onUpdateAccounts?.(a)} categories={categories} />
+
             <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
                 <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><Wallet size={20} /> Gestión de Categorías</h2>
 
@@ -341,25 +365,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
                                     <li key={cat.id} className="p-3 bg-slate-900 rounded-lg group">
                                         <div className="flex justify-between items-center gap-2">
                                             <div className="flex items-center gap-2 min-w-0">
-                                                {own ? (
-                                                    <button onClick={() => setIconEditId(iconEditId === String(cat.id) ? null : String(cat.id))} className="text-slate-400 hover:text-primary-400 p-1 -m-1 rounded" title="Cambiar icono" aria-label={`Cambiar icono de ${cat.name}`}>
-                                                        <Icon size={16} />
-                                                    </button>
-                                                ) : (
-                                                    <span className="text-slate-500"><Icon size={16} /></span>
-                                                )}
+                                                <span className="text-slate-500"><Icon size={16} /></span>
                                                 <span className="truncate">{cat.name}</span>
                                                 {!own && <span className="text-[9px] uppercase text-slate-600 shrink-0">sistema</span>}
                                             </div>
                                             {own && (
-                                                <button onClick={() => handleDeleteCategory(cat.id)} className="text-slate-600 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100 transition-all shrink-0" aria-label={`Eliminar ${cat.name}`}>
-                                                    <Trash2 size={16} />
-                                                </button>
+                                                <div className="flex items-center gap-2 shrink-0">
+                                                    <button onClick={() => startEditCategory(cat)} className="text-slate-500 hover:text-primary-400 md:opacity-0 md:group-hover:opacity-100 transition-all" aria-label={`Editar ${cat.name}`} title="Editar">
+                                                        <Pencil size={15} />
+                                                    </button>
+                                                    <button onClick={() => handleDeleteCategory(cat.id)} className="text-slate-600 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100 transition-all" aria-label={`Eliminar ${cat.name}`}>
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
                                             )}
                                         </div>
                                         {iconEditId === String(cat.id) && (
-                                            <div className="mt-3">
-                                                <IconSelector selectedIcon={cat.icon} onSelect={(icon) => handleChangeIcon(cat, icon)} />
+                                            <div className="mt-3 space-y-2">
+                                                <input
+                                                    type="text"
+                                                    value={editName}
+                                                    onChange={e => setEditName(e.target.value)}
+                                                    className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm"
+                                                    aria-label="Nombre de la categoría"
+                                                />
+                                                <IconSelector selectedIcon={editIcon} onSelect={setEditIcon} />
+                                                {editName.trim() && editName.trim() !== cat.name && (
+                                                    <p className="text-[11px] text-slate-500">Sus movimientos y presupuestos pasarán al nombre nuevo.</p>
+                                                )}
+                                                {editError && <p className="text-xs text-red-400">{editError}</p>}
+                                                <div className="flex justify-end gap-2">
+                                                    <button onClick={() => setIconEditId(null)} className="px-3 py-1.5 text-xs text-slate-400 hover:text-white bg-slate-800 rounded-lg">Cancelar</button>
+                                                    <button onClick={() => handleSaveCategory(cat)} disabled={editSaving} className="px-3 py-1.5 text-xs font-medium bg-primary-600 hover:bg-primary-500 text-white rounded-lg disabled:opacity-50">
+                                                        {editSaving ? 'Guardando...' : 'Guardar'}
+                                                    </button>
+                                                </div>
                                             </div>
                                         )}
                                     </li>
@@ -377,25 +417,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
                                     <li key={cat.id} className="p-3 bg-slate-900 rounded-lg group">
                                         <div className="flex justify-between items-center gap-2">
                                             <div className="flex items-center gap-2 min-w-0">
-                                                {own ? (
-                                                    <button onClick={() => setIconEditId(iconEditId === String(cat.id) ? null : String(cat.id))} className="text-slate-400 hover:text-primary-400 p-1 -m-1 rounded" title="Cambiar icono" aria-label={`Cambiar icono de ${cat.name}`}>
-                                                        <Icon size={16} />
-                                                    </button>
-                                                ) : (
-                                                    <span className="text-slate-500"><Icon size={16} /></span>
-                                                )}
+                                                <span className="text-slate-500"><Icon size={16} /></span>
                                                 <span className="truncate">{cat.name}</span>
                                                 {!own && <span className="text-[9px] uppercase text-slate-600 shrink-0">sistema</span>}
                                             </div>
                                             {own && (
-                                                <button onClick={() => handleDeleteCategory(cat.id)} className="text-slate-600 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100 transition-all shrink-0" aria-label={`Eliminar ${cat.name}`}>
-                                                    <Trash2 size={16} />
-                                                </button>
+                                                <div className="flex items-center gap-2 shrink-0">
+                                                    <button onClick={() => startEditCategory(cat)} className="text-slate-500 hover:text-primary-400 md:opacity-0 md:group-hover:opacity-100 transition-all" aria-label={`Editar ${cat.name}`} title="Editar">
+                                                        <Pencil size={15} />
+                                                    </button>
+                                                    <button onClick={() => handleDeleteCategory(cat.id)} className="text-slate-600 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100 transition-all" aria-label={`Eliminar ${cat.name}`}>
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
                                             )}
                                         </div>
                                         {iconEditId === String(cat.id) && (
-                                            <div className="mt-3">
-                                                <IconSelector selectedIcon={cat.icon} onSelect={(icon) => handleChangeIcon(cat, icon)} />
+                                            <div className="mt-3 space-y-2">
+                                                <input
+                                                    type="text"
+                                                    value={editName}
+                                                    onChange={e => setEditName(e.target.value)}
+                                                    className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm"
+                                                    aria-label="Nombre de la categoría"
+                                                />
+                                                <IconSelector selectedIcon={editIcon} onSelect={setEditIcon} />
+                                                {editName.trim() && editName.trim() !== cat.name && (
+                                                    <p className="text-[11px] text-slate-500">Sus movimientos y presupuestos pasarán al nombre nuevo.</p>
+                                                )}
+                                                {editError && <p className="text-xs text-red-400">{editError}</p>}
+                                                <div className="flex justify-end gap-2">
+                                                    <button onClick={() => setIconEditId(null)} className="px-3 py-1.5 text-xs text-slate-400 hover:text-white bg-slate-800 rounded-lg">Cancelar</button>
+                                                    <button onClick={() => handleSaveCategory(cat)} disabled={editSaving} className="px-3 py-1.5 text-xs font-medium bg-primary-600 hover:bg-primary-500 text-white rounded-lg disabled:opacity-50">
+                                                        {editSaving ? 'Guardando...' : 'Guardar'}
+                                                    </button>
+                                                </div>
                                             </div>
                                         )}
                                     </li>

@@ -19,7 +19,11 @@ export interface SmsPreview {
   description: string;
   category: string;
   paymentMethod: 'cash' | 'transfer';
+  reason?: string;
+  accounts?: { label: string; isOwn: boolean }[];
 }
+
+export interface SmsRules { income: string[]; expense: string[] }
 
 // URL pública del endpoint que llama el atajo del iPhone
 export const SHORTCUT_ENDPOINT = `${API_URL}/shortcut/sms`;
@@ -29,6 +33,9 @@ export const ShortcutService = {
   // Genera un token nuevo (invalida el anterior). Solo se muestra una vez.
   generate: async (): Promise<{ token: string }> => handle(await fetch(`${API_URL}/shortcut/token`, { method: 'POST', headers: getHeaders() })),
   revoke: async (): Promise<void> => { await handle(await fetch(`${API_URL}/shortcut/token`, { method: 'DELETE', headers: getHeaders() })); },
+  getRules: async (): Promise<SmsRules> => handle(await fetch(`${API_URL}/shortcut/rules`, { headers: getHeaders() })),
+  saveRules: async (rules: SmsRules): Promise<SmsRules> =>
+    handle(await fetch(`${API_URL}/shortcut/rules`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(rules) })),
   // Prueba cómo se leería un SMS (no guarda nada)
   preview: async (text: string): Promise<SmsPreview> =>
     handle(await fetch(`${API_URL}/shortcut/preview`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ text }) })),

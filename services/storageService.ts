@@ -1,4 +1,4 @@
-import { Transaction, UserProfile, SavingsGoal, Category, Budget } from '../types';
+import { Transaction, UserProfile, SavingsGoal, Category, Budget, AccountAlias } from '../types';
 import { INITIAL_SAVINGS, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from '../constants';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -240,14 +240,37 @@ export const StorageService = {
     return await handleResponse(response);
   },
 
-  // Cambia el icono de una categoría personal
-  updateCategoryIcon: async (id: string, icon: string): Promise<Category> => {
+  // Edita una categoría personal (nombre y/o icono). Renombrar mueve sus movimientos y presupuestos.
+  updateCategory: async (id: string, changes: { name?: string; icon?: string }): Promise<Category & { movedTransactions?: number }> => {
     const response = await fetch(`${API_URL}/categories/${id}`, {
       method: 'PUT',
       headers: getHeaders(),
-      body: JSON.stringify({ icon })
+      body: JSON.stringify(changes)
     });
     return await handleResponse(response);
+  },
+
+  // --- CUENTAS CONOCIDAS ---
+  getAccounts: async (): Promise<AccountAlias[]> => {
+    try {
+      const response = await fetch(`${API_URL}/accounts`, { headers: getHeaders() });
+      return await handleResponse(response);
+    } catch (e) {
+      console.error("Error cargando cuentas", e);
+      return [];
+    }
+  },
+  saveAccount: async (a: Omit<AccountAlias, 'id'> & { id?: string }): Promise<AccountAlias> => {
+    const response = await fetch(`${API_URL}/accounts${a.id ? `/${a.id}` : ''}`, {
+      method: a.id ? 'PUT' : 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(a)
+    });
+    return await handleResponse(response);
+  },
+  deleteAccount: async (id: string): Promise<void> => {
+    const response = await fetch(`${API_URL}/accounts/${id}`, { method: 'DELETE', headers: getHeaders() });
+    await handleResponse(response);
   },
 
   // Eliminar categoría

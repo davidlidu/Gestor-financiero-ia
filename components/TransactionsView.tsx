@@ -1,7 +1,8 @@
 import React from 'react';
 import { Download, ArrowRightLeft, Trash2, Search, Camera, Mic } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
-import { Transaction, Category } from '../types';
+import { Transaction, Category, AccountAlias } from '../types';
+import { annotateAccounts } from '../utils/accounts';
 import { formatMoney } from '../utils/format';
 
 interface TransactionsViewProps {
@@ -11,6 +12,7 @@ interface TransactionsViewProps {
     onDeleteTransaction: (id: string) => void;
     onExportCSV: () => void;
     onOpenTransferModal: () => void;
+    accounts?: AccountAlias[];
 }
 
 // --- Helpers for date grouping ---
@@ -82,7 +84,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     onEditTransaction,
     onDeleteTransaction,
     onExportCSV,
-    onOpenTransferModal
+    onOpenTransferModal,
+    accounts = []
 }) => {
     const groups = groupTransactionsByDate(filteredTransactions);
 
@@ -182,7 +185,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                                                 <MethodBadge method={t.method} />
                                             </div>
                                             <span className="text-xs text-slate-500 line-clamp-2 break-words block">
-                                                {t.description || 'Sin notas'} • {dayStr} {monthNames[monthIndex]} • {t.paymentMethod === 'cash' ? 'Efectivo' : 'Banco'}
+                                                {annotateAccounts(t.description || 'Sin notas', accounts)} • {dayStr} {monthNames[monthIndex]} • {t.paymentMethod === 'cash' ? 'Efectivo' : 'Banco'}
                                             </span>
                                         </div>
 

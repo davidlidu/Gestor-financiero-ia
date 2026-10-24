@@ -159,6 +159,23 @@ const initDB = async () => {
       );
     `));
 
+    // Frases que definen qué SMS registra el atajo y si son ingreso o gasto
+    await step('columna sms_rules', () =>
+      pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS sms_rules JSONB;`));
+
+    // Cuentas conocidas (propias o de terceros) para reconocerlas en los movimientos
+    await step('tabla account_aliases', () => pool.query(`
+      CREATE TABLE IF NOT EXISTS account_aliases (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        account_number VARCHAR(40) NOT NULL,
+        label VARCHAR(120) NOT NULL,
+        is_own BOOLEAN DEFAULT FALSE,
+        category VARCHAR(100),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `));
+
     // Categorías por defecto: se insertan las que falten (por nombre y tipo). Así las nuevas llegan también
     // a instalaciones existentes. Nunca se renombran ni borran las que ya hay (los movimientos guardan el nombre).
     // Los parámetros llevan ::varchar: sin el cast Postgres deduce text en el SELECT y varchar en el WHERE y falla.
@@ -900,19 +917,54 @@ app.post('/api/categories/merge', authenticateToken, async (req, res) => {
   }
 });
 
-// Cambiar el icono de una categoría personal
+// Editar una categoría personal (nombre y/o icono). Al renombrar, sus movimientos y presupuestos pasan al nombre nuevo.
 app.put('/api/categories/:id', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
   try {
-    const { icon } = req.body;
-    if (!icon) return res.status(400).json({ error: 'icon es requerido.' });
-    const r = await pool.query('UPDATE categories SET icon = $1 WHERE id = $2 AND user_id = $3 RETURNING *', [icon, req.params.id, req.user.id]);
-    if (r.rows.length === 0) return res.status(404).json({ error: 'Solo puedes cambiar el icono de tus categorías personales.' });
-    res.json(r.rows[0]);
+    const name = req.body.name !== undefined ? String(req.body.name).trim() : undefined;
+    const icon = req.body.icon;
+    if (name === undefined && !icon) return res.status(400).json({ error: 'Envía name o icon.' });
+    if (name !== undefined && !name) return res.status(400).json({ error: 'El nombre no puede estar vacío.' });
+
+    const cur = await client.query('SELECT * FROM categories WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    if (cur.rows.length === 0) return res.status(404).json({ error: 'Solo puedes editar tus categorías personales.' });
+    const cat = cur.rows[0];
+
+    if (name !== undefined && normName(name) !== normName(cat.name)) {
+      const dup = await client.query(
+        'SELECT name FROM categories WHERE (is_default = TRUE OR user_id = $1) AND type = $2 AND id <> $3',
+        [req.user.id, cat.type, cat.id]
+      );
+      if (dup.rows.some(c => normName(c.name) === normName(name))) {
+        return res.status(409).json({ error: `Ya existe una categoría "${name}". Si son la misma, únelas desde "Revisar y unir categorías".` });
+      }
+    }
+
+    await client.query('BEGIN');
+    const upd = await client.query(
+      'UPDATE categories SET name = COALESCE($1, name), icon = COALESCE($2, icon) WHERE id = $3 RETURNING *',
+      [name ?? null, icon ?? null, cat.id]
+    );
+    let movedTransactions = 0;
+    if (name !== undefined && name !== cat.name) {
+      const tx = await client.query(
+        'UPDATE transactions SET category = $1 WHERE user_id = $2 AND type = $3 AND category = $4',
+        [name, req.user.id, cat.type, cat.name]
+      );
+      movedTransactions = tx.rowCount;
+      await client.query('UPDATE budgets SET category_name = $1 WHERE user_id = $2 AND category_id = $3', [name, req.user.id, String(cat.id)]);
+      await client.query('UPDATE account_aliases SET category = $1 WHERE user_id = $2 AND category = $3', [name, req.user.id, cat.name]);
+    }
+    await client.query('COMMIT');
+    res.json({ ...upd.rows[0], movedTransactions });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
-  
+
   // CREAR CATEGORÍA PERSONALIZADA
   app.post('/api/categories', authenticateToken, async (req, res) => {
     try {
@@ -1216,6 +1268,21 @@ app.post('/api/google/import/preview', authenticateToken, async (req, res) => {
         paymentMethod: p.paymentMethod === 'cash' ? 'cash' : 'transfer',
         alreadyImported: already.has('gmail:' + p.id),
       }));
+
+    // Cuentas conocidas: anotar a quién pertenece la cuenta y usar su categoría si la tiene
+    const aliases = await getAccountAliases(req.user.id);
+    if (aliases.length) {
+      for (const c of candidates) {
+        const mail = emails.find(e => e.id === c.gmailId);
+        const others = matchAliases(mail ? `${mail.subject} ${mail.body}` : c.description, aliases).filter(a => !a.is_own);
+        if (others.length) {
+          const labels = others.map(a => a.label).join(', ');
+          if (!c.description.includes(labels)) c.description = `${c.description} · ${labels}`;
+          const withCat = others.find(a => a.category);
+          if (withCat) c.category = withCat.category;
+        }
+      }
+    }
 
     res.json({ candidates, scanned: emails.length });
   } catch (err) {
@@ -1533,6 +1600,112 @@ const runMonthEndAnalyses = async () => {
 };
 setInterval(runMonthEndAnalyses, 30 * 60 * 1000);
 
+// ================= CUENTAS CONOCIDAS Y REGLAS DE SMS =================
+const DEFAULT_SMS_RULES = {
+  income: ['Recibiste un pago', 'Recibiste una transferencia'],
+  expense: ['Compraste', 'Pagaste', 'Transferiste'],
+};
+const getSmsRules = async (userId) => {
+  const r = await pool.query('SELECT sms_rules FROM users WHERE id = $1', [userId]).catch(() => ({ rows: [] }));
+  const rules = r.rows[0] && r.rows[0].sms_rules;
+  return rules && Array.isArray(rules.income) && Array.isArray(rules.expense) ? rules : DEFAULT_SMS_RULES;
+};
+// Tipo según las frases configuradas (null si no coincide ninguna). Primero ingresos: "Recibiste una transferencia" ≠ "Transferiste".
+const typeFromRules = (text, rules) => {
+  const t = normName(text);
+  if (rules.income.some(p => p && t.includes(normName(p)))) return 'income';
+  if (rules.expense.some(p => p && t.includes(normName(p)))) return 'expense';
+  return null;
+};
+
+// Números de cuenta que aparecen en un texto: "*4814", "**4814", "cuenta 29200006485", "llave 71291437" o números largos
+const accountTokens = (text) => {
+  const out = new Set();
+  const re = /(?:\*{1,3}\s?|cuenta\s+(?:no\.?\s*|n[°º]\s*)?|cta\.?\s*|tarjeta\s+|llave\s+@?)(\d{4,})/gi;
+  let m; while ((m = re.exec(String(text)))) out.add(m[1]);
+  (String(text).match(/\b\d{8,}\b/g) || []).forEach(n => out.add(n));
+  return [...out];
+};
+// Coinciden si el número más largo termina en el más corto (mínimo 4 dígitos): "29200006485" ~ "*6485"
+const sameAccount = (a, b) => {
+  const x = String(a).replace(/\D/g, ''), y = String(b).replace(/\D/g, '');
+  const [s, l] = x.length <= y.length ? [x, y] : [y, x];
+  return s.length >= 4 && l.endsWith(s);
+};
+const getAccountAliases = async (userId) => {
+  const r = await pool.query('SELECT * FROM account_aliases WHERE user_id = $1', [userId]).catch(() => ({ rows: [] }));
+  return r.rows;
+};
+const matchAliases = (text, aliases) => {
+  const tokens = accountTokens(text);
+  return aliases.filter(a => tokens.some(t => sameAccount(a.account_number, t)));
+};
+
+app.get('/api/shortcut/rules', authenticateToken, async (req, res) => {
+  res.json(await getSmsRules(req.user.id));
+});
+app.put('/api/shortcut/rules', authenticateToken, async (req, res) => {
+  try {
+    const clean = (arr) => (Array.isArray(arr) ? arr : []).map(x => String(x).trim()).filter(Boolean).slice(0, 30);
+    const rules = { income: clean(req.body.income), expense: clean(req.body.expense) };
+    if (rules.income.length + rules.expense.length === 0) return res.status(400).json({ error: 'Agrega al menos una frase.' });
+    await pool.query('UPDATE users SET sms_rules = $1 WHERE id = $2', [JSON.stringify(rules), req.user.id]);
+    res.json(rules);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+const ACCOUNT_COLS = 'id, account_number AS "accountNumber", label, is_own AS "isOwn", category';
+const serializeAccount = (a) => ({ ...a, id: String(a.id) });
+const validAccount = (b) => {
+  const digits = String(b.accountNumber || '').replace(/\D/g, '');
+  if (digits.length < 4) return 'El número debe tener al menos 4 dígitos.';
+  if (!String(b.label || '').trim()) return 'Escribe a quién pertenece la cuenta.';
+  return null;
+};
+app.get('/api/accounts', authenticateToken, async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT ${ACCOUNT_COLS} FROM account_aliases WHERE user_id = $1 ORDER BY is_own DESC, label`, [req.user.id]);
+    res.json(r.rows.map(serializeAccount));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.post('/api/accounts', authenticateToken, async (req, res) => {
+  try {
+    const err = validAccount(req.body); if (err) return res.status(400).json({ error: err });
+    const r = await pool.query(
+      `INSERT INTO account_aliases (user_id, account_number, label, is_own, category) VALUES ($1, $2, $3, $4, $5) RETURNING ${ACCOUNT_COLS}`,
+      [req.user.id, String(req.body.accountNumber).replace(/\D/g, ''), String(req.body.label).trim(), !!req.body.isOwn, req.body.category || null]
+    );
+    res.json(serializeAccount(r.rows[0]));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.put('/api/accounts/:id', authenticateToken, async (req, res) => {
+  try {
+    const err = validAccount(req.body); if (err) return res.status(400).json({ error: err });
+    const r = await pool.query(
+      `UPDATE account_aliases SET account_number = $1, label = $2, is_own = $3, category = $4 WHERE id = $5 AND user_id = $6 RETURNING ${ACCOUNT_COLS}`,
+      [String(req.body.accountNumber).replace(/\D/g, ''), String(req.body.label).trim(), !!req.body.isOwn, req.body.category || null, req.params.id, req.user.id]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Cuenta no encontrada.' });
+    res.json(serializeAccount(r.rows[0]));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.delete('/api/accounts/:id', authenticateToken, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM account_aliases WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ================= ATAJO DE IPHONE (SMS DE COMPRAS) =================
 // El atajo del iPhone envía el texto del SMS del banco con un token personal; el servidor extrae el movimiento y lo guarda.
 const sha256 = (v) => crypto.createHash('sha256').update(String(v)).digest('hex');
@@ -1613,6 +1786,23 @@ Hoy es ${today}. SMS: ${JSON.stringify(String(text).slice(0, 1000))}`;
       console.error('[shortcut] IA no disponible, se usa extracción básica:', e.message);
     }
   }
+  // Reglas de frases del usuario: definen el tipo y filtran qué mensajes se registran
+  const rules = await getSmsRules(userId);
+  const ruleType = typeFromRules(text, rules);
+  if (ruleType) out.type = ruleType;
+  else { out.isTransaction = false; out.reason = 'El mensaje no contiene ninguna de tus frases configuradas.'; }
+
+  // Cuentas conocidas: se anota a quién pertenece y, si la cuenta tiene categoría, se usa esa
+  const known = matchAliases(text, await getAccountAliases(userId));
+  const others = known.filter(a => !a.is_own);
+  if (others.length) {
+    const labels = others.map(a => a.label).join(', ');
+    if (!out.description.includes(labels)) out.description = `${out.description} · ${labels}`.slice(0, 160);
+    const withCat = others.find(a => a.category);
+    if (withCat) out.category = withCat.category;
+  }
+  out.accounts = known.map(a => ({ label: a.label, isOwn: a.is_own }));
+
   if (!out.amount || out.amount <= 0) out.isTransaction = false;
   return out;
 };
@@ -1668,7 +1858,7 @@ app.post('/api/shortcut/sms', authenticateShortcut, async (req, res) => {
     const text = req.body && (req.body.text || req.body.mensaje);
     if (!text || !String(text).trim()) return res.status(400).json({ error: 'Falta el campo "text" con el mensaje.' });
     const p = await parseSmsTransaction(req.user.id, text);
-    if (!p.isTransaction) return res.json({ created: false, message: 'El mensaje no parece un movimiento de dinero; no se registró.' });
+    if (!p.isTransaction) return res.json({ created: false, message: p.reason || 'El mensaje no parece un movimiento de dinero; no se registró.' });
 
     // Si el atajo se dispara dos veces con el mismo SMS, no se duplica
     const ref = 'sms:' + sha256(String(text).trim()).slice(0, 40);

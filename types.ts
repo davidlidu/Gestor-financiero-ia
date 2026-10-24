@@ -81,3 +81,11 @@ export interface Installment {
   payments: InstallmentPayment[];
   userId?: string;
 }
+// Cuenta bancaria conocida (propia o de un tercero) para reconocerla en los movimientos
+export interface AccountAlias {
+  id: string;
+  accountNumber: string; // solo dígitos; pueden ser los últimos 4
+  label: string;         // a quién pertenece: "Roxana Gómez", "Mi ahorros Bancolombia"
+  isOwn: boolean;
+  category?: string | null; // categoría a usar cuando aparece esta cuenta
+}
