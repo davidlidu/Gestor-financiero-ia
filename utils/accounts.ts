@@ -17,6 +17,6 @@ export const annotateAccounts = (text: string, accounts: AccountAlias[]): string
   return text.replace(TOKEN_RE, (match, prefix, num, long) => {
     const digits = num || long;
     const acc = accounts.find(a => sameAccount(a.accountNumber, digits));
-    return acc && !text.includes(`(${acc.label})`) ? `${match} (${acc.label})` : match;
+    return acc && !text.includes(acc.label) ? `${match} (${acc.label})` : match;
   });
 };

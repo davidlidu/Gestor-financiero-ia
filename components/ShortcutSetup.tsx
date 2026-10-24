@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Smartphone, Copy, Check, Loader2, KeyRound, FlaskConical, AlertTriangle, X, Plus } from 'lucide-react';
 import { ShortcutService, SHORTCUT_ENDPOINT, SmsPreview, SmsRules } from '../services/shortcutService';
 import { formatMoney } from '../utils/format';
+import { ShortcutGuide } from './ShortcutGuide';
 
 const CopyButton: React.FC<{ value: string; label: string }> = ({ value, label }) => {
   const [done, setDone] = useState(false);
@@ -174,29 +175,7 @@ export const ShortcutSetup: React.FC = () => {
 
           <details className="rounded-lg border border-slate-700 p-3" open={!!token}>
             <summary className="text-sm font-semibold text-slate-200 cursor-pointer">Cómo crear la automatización en el iPhone</summary>
-            <ol className="mt-3 space-y-2.5 text-sm text-slate-300 list-decimal pl-5">
-              <li>Abre la app <b>Atajos</b> → pestaña <b>Automatización</b> → <b>+</b> (Nueva automatización) → <b>Mensaje</b>.</li>
-              <li>
-                En <b>Remitente</b> elige el contacto o número desde el que te llegan los SMS del banco y deja <b>"El mensaje contiene"</b> vacío.
-                La app filtra con tus frases de arriba, así que basta <b>una sola automatización</b> para ingresos y gastos.
-                <span className="block text-xs text-slate-500 mt-1">
-                  Alternativa: si prefieres filtrar en el iPhone, crea una automatización por frase poniéndola en "El mensaje contiene"
-                  (Recibiste un pago, Recibiste una transferencia, Compraste, Pagaste, Transferiste), con la misma acción del paso 5.
-                </span>
-              </li>
-              <li>Marca <b>Ejecutar inmediatamente</b> (iOS 17 o superior) y desactiva <b>Notificar al ejecutar</b> si no quieres el aviso. Toca <b>Siguiente</b> → <b>Nueva automatización en blanco</b>.</li>
-              <li>Agrega la acción <b>Obtener contenido de URL</b> y pega la <b>URL</b> de arriba.</li>
-              <li>
-                Toca la flecha <b>›</b> de la acción y configura:
-                <ul className="list-disc pl-5 mt-1 space-y-1 text-slate-400">
-                  <li><b>Método:</b> POST</li>
-                  <li><b>Encabezados:</b> agrega uno con clave <code>x-shortcut-token</code> y como valor tu <b>token</b>.</li>
-                  <li><b>Cuerpo de la solicitud:</b> JSON → agrega un campo de tipo <b>Texto</b> con clave <code>text</code>; en el valor toca la variable <b>Entrada del atajo</b> (si te deja elegir, su propiedad <b>Contenido</b>).</li>
-                </ul>
-              </li>
-              <li>Opcional: agrega <b>Mostrar notificación</b> con la variable <b>Contenido de URL</b> para ver la respuesta, por ejemplo <i>"Registrado -$42.000 en Restaurantes y domicilios"</i>.</li>
-              <li>Pruébalo pegando un mensaje real en el probador de abajo antes de esperar una compra.</li>
-            </ol>
+            <ShortcutGuide endpoint={SHORTCUT_ENDPOINT} />
             <p className="mt-3 text-xs text-slate-500">
               Solo funciona con <b>mensajes de texto (SMS/iMessage)</b>; las notificaciones push de la app del banco no las puede leer un atajo.
               Los mensajes que no son movimientos (códigos, publicidad) se ignoran, y si el atajo se dispara dos veces con el mismo mensaje no se duplica.
@@ -210,7 +189,7 @@ export const ShortcutSetup: React.FC = () => {
               value={sample}
               onChange={e => setSample(e.target.value)}
               rows={3}
-              placeholder="Pega aquí un SMS de tu banco, ej: Bancolombia le informa Compra por $42.000,00 en RAPPI 03/08/2026 T.Deb *1234"
+              placeholder="Pega aquí un SMS de tu banco, ej: Bancolombia: Compraste $42.000 en RAPPI con tu T.Deb *1234 el 03/08/2026"
               className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
             />
             <button onClick={test} disabled={testing || !sample.trim()} className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded-lg flex items-center gap-1.5">

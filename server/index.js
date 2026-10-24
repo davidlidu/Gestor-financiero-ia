@@ -1732,6 +1732,13 @@ const parseSmsBasic = (text) => {
 };
 
 const parseSmsTransaction = async (userId, text) => {
+  // Primero las frases del usuario: si el mensaje no trae ninguna se descarta aquí, sin enviarlo a la IA
+  // (si el filtro del iPhone es muy amplio, por ejemplo un espacio, llegan mensajes personales que no deben procesarse).
+  const rules = await getSmsRules(userId);
+  const ruleType = typeFromRules(text, rules);
+  if (!ruleType) {
+    return { isTransaction: false, reason: 'El mensaje no contiene ninguna de tus frases configuradas.', type: 'expense', amount: null, date: null, description: '', category: '', paymentMethod: 'transfer' };
+  }
   const basic = parseSmsBasic(text);
   const today = bogotaNow().toISOString().slice(0, 10);
   const validDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '') && d <= today ? d : null;
@@ -1786,18 +1793,16 @@ Hoy es ${today}. SMS: ${JSON.stringify(String(text).slice(0, 1000))}`;
       console.error('[shortcut] IA no disponible, se usa extracción básica:', e.message);
     }
   }
-  // Reglas de frases del usuario: definen el tipo y filtran qué mensajes se registran
-  const rules = await getSmsRules(userId);
-  const ruleType = typeFromRules(text, rules);
-  if (ruleType) out.type = ruleType;
-  else { out.isTransaction = false; out.reason = 'El mensaje no contiene ninguna de tus frases configuradas.'; }
+  // La frase configurada manda sobre lo que diga la IA
+  out.type = ruleType;
 
   // Cuentas conocidas: se anota a quién pertenece y, si la cuenta tiene categoría, se usa esa
   const known = matchAliases(text, await getAccountAliases(userId));
   const others = known.filter(a => !a.is_own);
   if (others.length) {
-    const labels = others.map(a => a.label).join(', ');
-    if (!out.description.includes(labels)) out.description = `${out.description} · ${labels}`.slice(0, 160);
+    const inDescription = matchAliases(out.description, others);
+    const missing = others.filter(a => !inDescription.includes(a) && !out.description.includes(a.label));
+    if (missing.length) out.description = `${out.description} · ${missing.map(a => a.label).join(', ')}`.slice(0, 160);
     const withCat = others.find(a => a.category);
     if (withCat) out.category = withCat.category;
   }
@@ -1812,9 +1817,10 @@ const authenticateShortcut = async (req, res, next) => {
   try {
     const bearer = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '');
     const token = req.headers['x-shortcut-token'] || (bearer.startsWith('fin_') ? bearer : '');
-    if (!token) return res.status(401).json({ error: 'Falta el token del atajo.' });
+    // Texto plano: estos errores se ven tal cual en la notificación del atajo
+    if (!token) return res.status(401).type('text/plain; charset=utf-8').send('❌ Falta el token del atajo (encabezado x-shortcut-token).');
     const r = await pool.query('SELECT id FROM users WHERE shortcut_token_hash = $1', [sha256(token)]);
-    if (r.rows.length === 0) return res.status(401).json({ error: 'Token inválido o revocado.' });
+    if (r.rows.length === 0) return res.status(401).type('text/plain; charset=utf-8').send('❌ Token inválido o revocado. Genera uno nuevo en Ajustes y actualízalo en el atajo.');
     req.user = { id: r.rows[0].id };
     next();
   } catch (err) {
@@ -1854,11 +1860,15 @@ app.post('/api/shortcut/preview', authenticateToken, async (req, res) => {
 
 // Endpoint que llama el atajo del iPhone con el texto del SMS
 app.post('/api/shortcut/sms', authenticateShortcut, async (req, res) => {
+  // Respuesta en texto plano: el atajo la muestra tal cual en "Mostrar notificación"
+  const reply = (status, msg) => res.status(status).type('text/plain; charset=utf-8').send(msg);
   try {
     const text = req.body && (req.body.text || req.body.mensaje);
-    if (!text || !String(text).trim()) return res.status(400).json({ error: 'Falta el campo "text" con el mensaje.' });
+    if (!text || !String(text).trim()) {
+      return reply(400, '⚠️ No llegó el texto del mensaje. Es normal si ejecutas el atajo a mano con ▶: se activa solo cuando llega un SMS. Si pasó con un SMS real, revisa que el campo "text" use la variable Contenido.');
+    }
     const p = await parseSmsTransaction(req.user.id, text);
-    if (!p.isTransaction) return res.json({ created: false, message: p.reason || 'El mensaje no parece un movimiento de dinero; no se registró.' });
+    if (!p.isTransaction) return reply(200, `ℹ️ No se registró: ${p.reason || 'el mensaje no parece un movimiento de dinero.'}`);
 
     // Si el atajo se dispara dos veces con el mismo SMS, no se duplica
     const ref = 'sms:' + sha256(String(text).trim()).slice(0, 40);
@@ -1869,17 +1879,13 @@ app.post('/api/shortcut/sms', authenticateShortcut, async (req, res) => {
        RETURNING id`,
       [req.user.id, p.amount, p.description, p.date, p.category, p.type, p.paymentMethod, ref]
     );
-    if (r.rows.length === 0) return res.json({ created: false, duplicated: true, message: 'Ese mensaje ya estaba registrado.' });
+    if (r.rows.length === 0) return reply(200, 'ℹ️ Ese mensaje ya estaba registrado.');
     const signo = p.type === 'income' ? '+' : '-';
-    res.status(201).json({
-      created: true,
-      id: String(r.rows[0].id),
-      message: `Registrado ${signo}$${Math.round(p.amount).toLocaleString('es-CO')} en ${p.category}`,
-      transaction: p,
-    });
+    const quien = (p.accounts || []).filter(a => !a.isOwn).map(a => a.label).join(', ');
+    reply(201, `✅ ${p.type === 'income' ? 'Ingreso' : 'Gasto'} registrado: ${signo}$${Math.round(p.amount).toLocaleString('es-CO')} en ${p.category}${quien ? ` · ${quien}` : ''}`);
   } catch (err) {
     console.error('[shortcut/sms] Error:', err.message);
-    res.status(500).json({ error: err.message });
+    reply(500, `❌ Error al registrar: ${err.message}`);
   }
 });
 
