@@ -141,28 +141,37 @@ const initDB = async () => {
       );
     `);
 
-    // Categorías por defecto: se insertan las que falten (por nombre y tipo). Así las nuevas llegan también
-    // a instalaciones existentes. Nunca se renombran ni borran las que ya hay (los movimientos guardan el nombre).
-    for (const cat of [...DEFAULT_EXPENSE_CATEGORIES, ...DEFAULT_INCOME_CATEGORIES]) {
-      await pool.query(
-        `INSERT INTO categories (name, icon, type, is_default)
-         SELECT $1, $2, $3, TRUE
-         WHERE NOT EXISTS (SELECT 1 FROM categories WHERE is_default = TRUE AND name = $1 AND type = $3)`,
-        [cat.name, cat.icon, cat.type]
-      );
-    }
+    // Migraciones nuevas: cada paso va aislado para que un fallo no impida los siguientes
+    const step = async (name, fn) => {
+      try { await fn(); } catch (e) { console.error(`[initDB] Falló "${name}":`, e.message); }
+    };
+
+    // Token personal para el atajo del iPhone (se guarda solo su hash)
+    await step('columna shortcut_token_hash', () =>
+      pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS shortcut_token_hash VARCHAR(64);`));
 
     // Categorías por defecto que cada usuario ocultó (p. ej. al unirlas con otra)
-    await pool.query(`
+    await step('tabla hidden_categories', () => pool.query(`
       CREATE TABLE IF NOT EXISTS hidden_categories (
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         category_id INTEGER REFERENCES categories(id) ON DELETE CASCADE,
         PRIMARY KEY (user_id, category_id)
       );
-    `);
+    `));
 
-    // Token personal para el atajo del iPhone (se guarda solo su hash)
-    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS shortcut_token_hash VARCHAR(64);`);
+    // Categorías por defecto: se insertan las que falten (por nombre y tipo). Así las nuevas llegan también
+    // a instalaciones existentes. Nunca se renombran ni borran las que ya hay (los movimientos guardan el nombre).
+    // Los parámetros llevan ::varchar: sin el cast Postgres deduce text en el SELECT y varchar en el WHERE y falla.
+    await step('categorías por defecto', async () => {
+      for (const cat of [...DEFAULT_EXPENSE_CATEGORIES, ...DEFAULT_INCOME_CATEGORIES]) {
+        await pool.query(
+          `INSERT INTO categories (name, icon, type, is_default)
+           SELECT $1::varchar, $2::varchar, $3::varchar, TRUE
+           WHERE NOT EXISTS (SELECT 1 FROM categories WHERE is_default = TRUE AND name = $1::varchar AND type = $3::varchar)`,
+          [cat.name, cat.icon, cat.type]
+        );
+      }
+    });
 
     console.log("Base de datos inicializada correctamente.");
   } catch (err) {
@@ -809,13 +818,20 @@ app.put('/api/user/settings', authenticateToken, async (req, res) => {
 // Se omiten las por defecto que el usuario ocultó y las que repiten el nombre de una categoría propia del mismo tipo.
 app.get('/api/categories', authenticateToken, async (req, res) => {
     try {
-      const result = await pool.query(
-        `SELECT * FROM categories c
-         WHERE (c.is_default = TRUE OR c.user_id = $1)
-           AND NOT EXISTS (SELECT 1 FROM hidden_categories h WHERE h.user_id = $1 AND h.category_id = c.id)
-         ORDER BY type, name`,
-        [req.user.id]
-      );
+      let result;
+      try {
+        result = await pool.query(
+          `SELECT * FROM categories c
+           WHERE (c.is_default = TRUE OR c.user_id = $1)
+             AND NOT EXISTS (SELECT 1 FROM hidden_categories h WHERE h.user_id = $1 AND h.category_id = c.id)
+           ORDER BY type, name`,
+          [req.user.id]
+        );
+      } catch (e) {
+        // Si la tabla hidden_categories aún no existe (migración pendiente), las categorías se muestran igual
+        if (e.code !== '42P01') throw e;
+        result = await pool.query('SELECT * FROM categories WHERE is_default = TRUE OR user_id = $1 ORDER BY type, name', [req.user.id]);
+      }
       const own = new Set(result.rows.filter(c => !c.is_default).map(c => c.type + '|' + normName(c.name)));
       res.json(result.rows.filter(c => !c.is_default || !own.has(c.type + '|' + normName(c.name))));
     } catch (err) {
@@ -1313,7 +1329,7 @@ app.post('/api/budgets/copy', authenticateToken, async (req, res) => {
     if (from === to) return res.status(400).json({ error: 'El mes de origen y el de destino son el mismo.' });
     const r = await pool.query(
       `INSERT INTO budgets (user_id, category_id, category_name, amount, month_year)
-       SELECT user_id, category_id, category_name, amount, $3 FROM budgets
+       SELECT user_id, category_id, category_name, amount, $3::varchar FROM budgets
         WHERE user_id = $1 AND month_year = $2
        ON CONFLICT (user_id, category_id, month_year) DO NOTHING
        RETURNING id`,
@@ -1564,7 +1580,10 @@ const parseSmsTransaction = async (userId, text) => {
           WHERE (c.is_default = TRUE OR c.user_id = $1)
             AND NOT EXISTS (SELECT 1 FROM hidden_categories h WHERE h.user_id = $1 AND h.category_id = c.id)`,
         [userId]
-      );
+      ).catch(e => {
+        if (e.code !== '42P01') throw e;
+        return pool.query('SELECT name, type FROM categories WHERE is_default = TRUE OR user_id = $1', [userId]);
+      });
       const exp = cats.rows.filter(c => c.type === 'expense').map(c => c.name);
       const inc = cats.rows.filter(c => c.type === 'income').map(c => c.name);
       const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({
