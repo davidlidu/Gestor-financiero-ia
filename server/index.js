@@ -5,6 +5,7 @@ const cors = require('cors');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const webpush = require('web-push');
 const nodemailer = require('nodemailer');
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
@@ -175,6 +176,23 @@ const initDB = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `));
+
+    // Notificaciones push: suscripciones por dispositivo y configuración (claves VAPID)
+    await step('tabla app_config', () => pool.query(`
+      CREATE TABLE IF NOT EXISTS app_config (key VARCHAR(100) PRIMARY KEY, value TEXT NOT NULL);
+    `));
+    await step('tabla push_subscriptions', () => pool.query(`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        endpoint TEXT UNIQUE NOT NULL,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        user_agent TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `));
+    await step('claves VAPID', () => initVapid());
 
     // Categorías por defecto: se insertan las que falten (por nombre y tipo). Así las nuevas llegan también
     // a instalaciones existentes. Nunca se renombran ni borran las que ya hay (los movimientos guardan el nombre).
@@ -635,6 +653,12 @@ app.post('/api/integrations/billing-payment', authenticateService, async (req, r
       return res.status(200).json({ success: true, duplicated: true });
     }
 
+    sendPushToUser(userId, {
+      title: '💰 Ingreso registrado',
+      body: `+$${Math.round(parsedAmount).toLocaleString('es-CO')} · ${finalDescription}`,
+      url: '/?view=transactions',
+      tag: 'tx-' + result.rows[0].id,
+    });
     res.status(201).json({ success: true, id: result.rows[0].id.toString() });
   } catch (err) {
     console.error('[billing-payment] Error:', err.message);
@@ -1600,6 +1624,100 @@ const runMonthEndAnalyses = async () => {
 };
 setInterval(runMonthEndAnalyses, 30 * 60 * 1000);
 
+// ================= NOTIFICACIONES PUSH =================
+// Claves VAPID: de las variables VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY si existen; si no, se generan una vez y se guardan
+// en app_config (cambiarlas invalida las suscripciones existentes, por eso no se regeneran).
+let vapidPublicKey = null;
+let vapidInit = null;
+const initVapid = () => {
+  if (vapidInit) return vapidInit;
+  vapidInit = (async () => {
+    let pub = process.env.VAPID_PUBLIC_KEY, priv = process.env.VAPID_PRIVATE_KEY;
+    if (!pub || !priv) {
+      const read = async () => {
+        const r = await pool.query("SELECT key, value FROM app_config WHERE key IN ('vapid_public', 'vapid_private')");
+        const m = Object.fromEntries(r.rows.map(x => [x.key, x.value]));
+        return [m.vapid_public, m.vapid_private];
+      };
+      [pub, priv] = await read();
+      if (!pub || !priv) {
+        const k = webpush.generateVAPIDKeys();
+        await pool.query("INSERT INTO app_config (key, value) VALUES ('vapid_public', $1), ('vapid_private', $2) ON CONFLICT (key) DO NOTHING", [k.publicKey, k.privateKey]);
+        [pub, priv] = await read(); // por si otra instancia las creó al mismo tiempo
+      }
+    }
+    webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:soporte@lidutech.net', pub, priv);
+    vapidPublicKey = pub;
+  })().catch(e => { vapidInit = null; throw e; });
+  return vapidInit;
+};
+
+// Envía una notificación a todos los dispositivos del usuario. Nunca lanza: un fallo de push no debe romper el registro.
+const sendPushToUser = async (userId, payload) => {
+  try {
+    await initVapid();
+    const subs = await pool.query('SELECT * FROM push_subscriptions WHERE user_id = $1', [userId]);
+    let sent = 0;
+    await Promise.all(subs.rows.map(async (sub) => {
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          JSON.stringify(payload),
+          { TTL: 60 * 60 * 24 }
+        );
+        sent++;
+      } catch (e) {
+        // 404/410: el dispositivo ya no acepta notificaciones (desinstaló la app o revocó el permiso)
+        if (e.statusCode === 404 || e.statusCode === 410) await pool.query('DELETE FROM push_subscriptions WHERE id = $1', [sub.id]);
+        else console.error('[push] Error enviando:', e.statusCode || '', e.body || e.message);
+      }
+    }));
+    return sent;
+  } catch (e) {
+    console.error('[push] No disponible:', e.message);
+    return 0;
+  }
+};
+
+app.get('/api/push/public-key', authenticateToken, async (req, res) => {
+  try { await initVapid(); res.json({ publicKey: vapidPublicKey }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+// Registra (o actualiza) la suscripción de este dispositivo
+app.post('/api/push/subscribe', authenticateToken, async (req, res) => {
+  try {
+    const sub = req.body && req.body.subscription;
+    if (!sub || !sub.endpoint || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) return res.status(400).json({ error: 'Suscripción inválida.' });
+    await pool.query(
+      `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, user_agent) VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth, user_agent = EXCLUDED.user_agent`,
+      [req.user.id, sub.endpoint, sub.keys.p256dh, sub.keys.auth, String(req.headers['user-agent'] || '').slice(0, 300)]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.post('/api/push/unsubscribe', authenticateToken, async (req, res) => {
+  try {
+    if (!req.body || !req.body.endpoint) return res.status(400).json({ error: 'Falta endpoint.' });
+    await pool.query('DELETE FROM push_subscriptions WHERE endpoint = $1 AND user_id = $2', [req.body.endpoint, req.user.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.post('/api/push/test', authenticateToken, async (req, res) => {
+  const sent = await sendPushToUser(req.user.id, {
+    title: 'DeerSystems Finanzas',
+    body: '🔔 ¡Listo! Así te llegarán los avisos de tus movimientos.',
+    url: '/?view=transactions',
+    tag: 'prueba',
+  });
+  if (sent === 0) return res.status(404).json({ error: 'No hay dispositivos con notificaciones activas, o el envío falló.' });
+  res.json({ success: true, sent });
+});
+
 // ================= CUENTAS CONOCIDAS Y REGLAS DE SMS =================
 const DEFAULT_SMS_RULES = {
   income: ['Recibiste un pago', 'Recibiste una transferencia'],
@@ -1882,7 +2000,15 @@ app.post('/api/shortcut/sms', authenticateShortcut, async (req, res) => {
     if (r.rows.length === 0) return reply(200, 'ℹ️ Ese mensaje ya estaba registrado.');
     const signo = p.type === 'income' ? '+' : '-';
     const quien = (p.accounts || []).filter(a => !a.isOwn).map(a => a.label).join(', ');
-    reply(201, `✅ ${p.type === 'income' ? 'Ingreso' : 'Gasto'} registrado: ${signo}$${Math.round(p.amount).toLocaleString('es-CO')} en ${p.category}${quien ? ` · ${quien}` : ''}`);
+    const resumen = `${signo}$${Math.round(p.amount).toLocaleString('es-CO')} en ${p.category}${quien ? ` · ${quien}` : ''}`;
+    // Aviso push de la app (no se espera: la respuesta al atajo sale de inmediato)
+    sendPushToUser(req.user.id, {
+      title: p.type === 'income' ? '💰 Ingreso registrado' : '💳 Gasto registrado',
+      body: `${resumen}\n${p.description}`,
+      url: '/?view=transactions',
+      tag: 'tx-' + r.rows[0].id,
+    });
+    reply(201, `✅ ${p.type === 'income' ? 'Ingreso' : 'Gasto'} registrado: ${resumen}`);
   } catch (err) {
     console.error('[shortcut/sms] Error:', err.message);
     reply(500, `❌ Error al registrar: ${err.message}`);

@@ -110,14 +110,20 @@ export const ShortcutGuide: React.FC<{ endpoint: string }> = ({ endpoint }) => (
             <p className="text-[12px] text-slate-200 leading-snug">✅ Gasto registrado: -$42.000 en Restaurantes y domicilios</p>
           </div>
         </Phone>
-        <Note>La app responde con un texto corto como el del ejemplo. Si ves texto con llaves <code>{'{ }'}</code>, actualiza la app: era el formato anterior.</Note>
+        <Note>
+          Mejor aún: activa <b>Notificaciones de la app</b> (arriba en Ajustes) y omite este paso. Así recibes el aviso desde la app y puedes apagar las notificaciones de Atajos.
+        </Note>
       </div>
     </div>
 
     <div className="space-y-2 text-sm text-slate-300">
       <p className="font-semibold text-slate-200">Notificaciones que vas a ver</p>
       <ul className="list-disc pl-5 space-y-1.5">
-        <li><b>"Ejecutando tu automatización…"</b> es un aviso del propio iPhone y no lo controla la app. Si en el disparador te aparece <b>Notificar al ejecutar</b>, apágalo; en algunas versiones de iOS no se puede quitar.</li>
+        <li>
+          <b>"Running…" / "Ejecutando tu automatización…"</b> es un aviso del propio iPhone. Para quitarlo: activa <b>Notificaciones de la app</b>, quita la acción
+          "Mostrar notificación" de tus automatizaciones y apaga las notificaciones de Atajos en <b>Ajustes → Tiempo en pantalla → Ver toda la actividad → Notificaciones → Atajos</b>.
+          Si tu iOS muestra la opción <b>Notificar al ejecutar</b> en la automatización, también puedes apagarla ahí.
+        </li>
         <li><b>"✅ Gasto registrado…"</b> o <b>"✅ Ingreso registrado…"</b>: el movimiento ya está en la app.</li>
         <li><b>"ℹ️ No se registró…"</b>: el SMS no traía ninguna de tus frases, por ejemplo un código o una publicidad. Es normal.</li>
         <li><b>"⚠️ No llegó el texto del mensaje"</b>: pasa si ejecutas el atajo a mano con ▶. No es un error: se activa solo con SMS reales.</li>

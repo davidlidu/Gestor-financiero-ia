@@ -8,6 +8,7 @@ import { GoogleService, GoogleStatus } from '../services/googleService';
 import { GmailImportModal } from './GmailImportModal';
 import { CategoryReview } from './CategoryReview';
 import { ShortcutSetup } from './ShortcutSetup';
+import { PushSetup } from './PushSetup';
 import { AccountsSetup } from './AccountsSetup';
 
 interface SettingsViewProps {
@@ -308,6 +309,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
                     <Save size={18} /> Guardar Cambios
                 </button>
             </div>
+
+            <PushSetup />
 
             <ShortcutSetup />
 

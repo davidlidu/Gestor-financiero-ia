@@ -134,6 +134,13 @@ function App() {
     // Manejo del retorno tras vincular Google (?gmail=linked | error)
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
+        // Al tocar una notificación push se abre la app con ?view=<vista>
+        const target = params.get('view');
+        if (target && ['dashboard', 'transactions', 'savings', 'reports', 'installments', 'settings'].includes(target)) {
+            setView(target as any);
+            params.delete('view');
+            window.history.replaceState({}, '', window.location.pathname + (params.toString() ? `?${params}` : ''));
+        }
         const gmail = params.get('gmail');
         if (!gmail) return;
         if (gmail === 'linked') {

@@ -15,6 +15,8 @@ export default defineConfig(({ mode }) => {
       // --- CONFIGURACIÓN PWA ---
       VitePWA({
         registerType: 'autoUpdate',
+        // Notificaciones push: el service worker generado importa este archivo (public/push-sw.js)
+        workbox: { importScripts: ['push-sw.js'] },
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
         manifest: {
           name: 'DeerSystems Financial IA',
