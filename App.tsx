@@ -15,6 +15,7 @@ import { TransactionsView } from './components/TransactionsView';
 import { CategoryFilter } from './components/CategoryFilter';
 import { SettingsView } from './components/SettingsView';
 import { ReportsView } from './components/ReportsView';
+import { FinanceChat } from './components/FinanceChat';
 import { InstallmentsView } from './components/InstallmentsView';
 import { INITIAL_SAVINGS } from './constants';
 import * as LucideIcons from 'lucide-react';
@@ -54,7 +55,7 @@ function App() {
     const incomeCategories = categories.filter(c => c.type === 'income');
 
     // UI State
-    const [view, setView] = useState<'dashboard' | 'transactions' | 'savings' | 'reports' | 'installments' | 'settings'>('dashboard');
+    const [view, setView] = useState<'dashboard' | 'transactions' | 'savings' | 'reports' | 'chat' | 'installments' | 'settings'>('dashboard');
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [chartMode, setChartMode] = useState<'expense' | 'income'>('expense');
 
@@ -136,7 +137,7 @@ function App() {
         const params = new URLSearchParams(window.location.search);
         // Al tocar una notificación push se abre la app con ?view=<vista>
         const target = params.get('view');
-        if (target && ['dashboard', 'transactions', 'savings', 'reports', 'installments', 'settings'].includes(target)) {
+        if (target && ['dashboard', 'transactions', 'savings', 'reports', 'chat', 'installments', 'settings'].includes(target)) {
             setView(target as any);
             params.delete('view');
             window.history.replaceState({}, '', window.location.pathname + (params.toString() ? `?${params}` : ''));
@@ -648,7 +649,7 @@ function App() {
     // --- Main App Render ---
     return (
         <Layout user={user} onLogout={handleLogout} currentView={view} onNavigate={setView}>
-            <div className="max-w-7xl mx-auto space-y-6 pb-24">
+            <div className={`max-w-7xl mx-auto space-y-6 ${view === 'chat' ? '' : 'pb-24'}`}>
 
                 {/* Filter Component Reusable (Optimizado Mobile & Desktop) */}
                 {(view === 'dashboard' || view === 'transactions') && (
@@ -1090,6 +1091,11 @@ function App() {
                     />
                 )}
 
+                {/* --- ASISTENTE (chat con las finanzas del usuario) --- */}
+                {view === 'chat' && user && (
+                    <FinanceChat userId={String(user.id)} userName={user.name} />
+                )}
+
                 {/* --- SETTINGS VIEW --- */}
                 {view === 'settings' && user && (
                     <SettingsView
@@ -1107,7 +1113,7 @@ function App() {
             </div>
 
             {/* Quick Actions FAB — visible on dashboard and transactions */}
-            {view !== 'settings' && (
+            {view !== 'settings' && view !== 'chat' && (
                 <QuickActionsFAB
                     onManual={() => { setEditingTransaction(null); setInitialTab('manual'); setIsTransactionModalOpen(true); }}
                     onScan={() => { setEditingTransaction(null); setInitialTab('ocr'); setIsTransactionModalOpen(true); }}

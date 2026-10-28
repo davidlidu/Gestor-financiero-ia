@@ -114,10 +114,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ transactions: rawTrans
             });
         }
 
-        // Transaction count by method
-        const manualCount = currentTx.filter(t => t.method === 'manual').length;
-        const ocrCount = currentTx.filter(t => t.method === 'ocr').length;
-        const voiceCount = currentTx.filter(t => t.method === 'voice').length;
 
         return {
             income, expense, netFlow, prevIncome, prevExpense, prevNetFlow,
@@ -126,7 +122,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ transactions: rawTrans
             dailySpend, maxDailySpend,
             monthlyOverview,
             txCount: currentTx.length,
-            manualCount, ocrCount, voiceCount,
         };
     }, [transactions, selectedMonth, selectedYear]);
 
@@ -317,25 +312,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ transactions: rawTrans
                                 </div>
                             );
                         })}
-                    </div>
-                </div>
-            </div>
-
-            {/* AI Input Methods Stats */}
-            <div className="bg-slate-800/60 rounded-xl border border-slate-700/50 p-5">
-                <h3 className="text-sm font-bold text-slate-300 mb-3">Métodos de Registro</h3>
-                <div className="grid grid-cols-3 gap-3">
-                    <div className="bg-slate-900/50 rounded-lg p-3 text-center border border-slate-700/30">
-                        <p className="text-2xl font-bold text-slate-200">{reportData.manualCount}</p>
-                        <p className="text-[10px] text-slate-500 font-medium mt-1">✏️ Manual</p>
-                    </div>
-                    <div className="bg-slate-900/50 rounded-lg p-3 text-center border border-amber-500/20">
-                        <p className="text-2xl font-bold text-amber-400">{reportData.ocrCount}</p>
-                        <p className="text-[10px] text-slate-500 font-medium mt-1">📷 OCR (IA)</p>
-                    </div>
-                    <div className="bg-slate-900/50 rounded-lg p-3 text-center border border-violet-500/20">
-                        <p className="text-2xl font-bold text-violet-400">{reportData.voiceCount}</p>
-                        <p className="text-[10px] text-slate-500 font-medium mt-1">🎙️ Voz (IA)</p>
                     </div>
                 </div>
             </div>

@@ -10,7 +10,8 @@ import {
   Menu,
   X,
   Moon,
-  Sun
+  Sun,
+  Sparkles
 } from 'lucide-react';
 import { UserProfile } from '../types';
 
@@ -18,8 +19,8 @@ interface LayoutProps {
   children: React.ReactNode;
   user: UserProfile | null;
   onLogout: () => void;
-  currentView: 'dashboard' | 'transactions' | 'savings' | 'reports' | 'installments' | 'settings';
-  onNavigate: (view: 'dashboard' | 'transactions' | 'savings' | 'reports' | 'installments' | 'settings') => void;
+  currentView: 'dashboard' | 'transactions' | 'savings' | 'reports' | 'chat' | 'installments' | 'settings';
+  onNavigate: (view: 'dashboard' | 'transactions' | 'savings' | 'reports' | 'chat' | 'installments' | 'settings') => void;
 }
 
 export function Layout({ children, user, onLogout, currentView, onNavigate }: LayoutProps) {
@@ -40,6 +41,7 @@ export function Layout({ children, user, onLogout, currentView, onNavigate }: La
     { id: 'transactions', label: 'Movimientos', icon: ArrowRightLeft },
     { id: 'savings', label: 'Metas', icon: PiggyBank },
     { id: 'reports', label: 'Reportes', icon: BarChart3 },
+    { id: 'chat', label: 'Asistente', icon: Sparkles },
     { id: 'installments', label: 'Cuotas', icon: CreditCard },
     { id: 'settings', label: 'Ajustes', icon: Settings },
   ] as const;
