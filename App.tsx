@@ -823,7 +823,7 @@ function App() {
                                 <h2 className={`text-3xl md:text-4xl font-bold ${dashboardData.balance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                                     ${formatMoney(dashboardData.balance)}
                                 </h2>
-                                <p className="text-[10px] text-slate-500 mt-1">Balance del periodo seleccionado</p>
+                                <p className="text-[10px] text-slate-500 mt-1">Todo tu historial, sin lo guardado en metas</p>
                             </div>
 
                             {/* Income Card */}
