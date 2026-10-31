@@ -23,7 +23,7 @@ import { ChevronDown, ChevronUp, History, Search } from 'lucide-react';
 import { ToastContainer, useToast } from './components/Toast';
 import { QuickActionsFAB } from './components/QuickActionsFAB';
 
-import { formatMoney } from './utils/format';
+import { formatMoney, localDateStr } from './utils/format';
 import { annotateAccounts } from './utils/accounts';
 
 function App() {
@@ -77,8 +77,7 @@ function App() {
         const month = now.getMonth() + offset;
         const start = new Date(year, month, 1);
         const end = new Date(year, month + 1, 0); // last day of that month
-        const fmt = (d: Date) => d.toISOString().split('T')[0];
-        return { start: fmt(start), end: fmt(end) };
+        return { start: localDateStr(start), end: localDateStr(end) };
     };
 
     // Filter State
@@ -104,6 +103,26 @@ function App() {
         }
         // 'custom' keeps existing dates
     };
+
+    // Tarjetas Ingresos/Egresos: la primera pulsación filtra, la segunda quita el filtro
+    const toggleTypeFilter = (type: 'income' | 'expense') => {
+        setFilterType(prev => prev === type ? 'all' : type);
+        setFilterCategory([]);
+        setView('transactions');
+    };
+
+    // La PWA puede quedar abierta de un mes a otro: al volver a ella, "Mes Actual" debe seguir siendo el mes actual
+    useEffect(() => {
+        const onVisible = () => {
+            if (document.visibilityState === 'visible' && filterPeriod === 'current_month') {
+                const range = getMonthRange(0);
+                setFilterStartDate(range.start);
+                setFilterEndDate(range.end);
+            }
+        };
+        document.addEventListener('visibilitychange', onVisible);
+        return () => document.removeEventListener('visibilitychange', onVisible);
+    }, [filterPeriod]);
 
     const [showFilters, setShowFilters] = useState(false); // Colapsar filtros
     const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -378,7 +397,7 @@ function App() {
             amount: amount,
             category: 'Ahorro',
             description: `Transferencia a: ${goal.name}`,
-            date: new Date().toISOString().split('T')[0],
+            date: localDateStr(),
             type: 'expense',
             method: 'manual',
             paymentMethod: 'transfer',
@@ -414,7 +433,7 @@ function App() {
             amount: amount,
             category: 'Ahorro',
             description: `Retiro de: ${goal.name}`,
-            date: new Date().toISOString().split('T')[0],
+            date: localDateStr(),
             type: 'income',
             method: 'manual',
             paymentMethod: 'transfer',
@@ -467,24 +486,30 @@ function App() {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.setAttribute('download', `movimientos_${new Date().toISOString().split('T')[0]}.csv`);
+        link.setAttribute('download', `movimientos_${localDateStr()}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
     };
 
     // --- Derived Data (With Filters applied) ---
-    const filteredTransactions = useMemo(() => {
-        // 1. Primero filtramos (la lógica que ya tenías)
-        const filtered = transactions.filter(t => {
+    // Sin el filtro de tipo: las tarjetas de Ingresos y Egresos muestran ambos totales aunque una esté seleccionada
+    const periodTransactions = useMemo(() => {
+        return transactions.filter(t => {
+            // La API entrega "2026-10-31T00:00:00.000Z": se compara solo la fecha para incluir el último día
+            const day = t.date.substring(0, 10);
             let matches = true;
-            if (filterStartDate && t.date < filterStartDate) matches = false;
-            if (filterEndDate && t.date > filterEndDate) matches = false;
+            if (filterStartDate && day < filterStartDate) matches = false;
+            if (filterEndDate && day > filterEndDate) matches = false;
             if (filterCategory.length > 0 && !filterCategory.includes(t.category)) matches = false;
-            if (filterType !== 'all' && t.type !== filterType) matches = false;
             if (filterSearch && !t.description.toLowerCase().includes(filterSearch.toLowerCase()) && !t.category.toLowerCase().includes(filterSearch.toLowerCase())) matches = false;
             return matches;
         });
+    }, [transactions, filterStartDate, filterEndDate, filterCategory, filterSearch]);
+
+    const filteredTransactions = useMemo(() => {
+        // 1. Primero filtramos (la lógica que ya tenías)
+        const filtered = periodTransactions.filter(t => filterType === 'all' || t.type === filterType);
 
         // 2. Luego ordenamos
         return filtered.sort((a, b) => {
@@ -501,14 +526,14 @@ function App() {
                 return bId - aId || b.id.localeCompare(a.id);
             }
         });
-    }, [transactions, filterStartDate, filterEndDate, filterCategory, filterType, sortOrder, filterSearch]); // <--- Agregamos sortOrder y filterSearch aquí
+    }, [periodTransactions, filterType, sortOrder]);
 
     const dashboardData = useMemo(() => {
         const dataToUse = filteredTransactions;
 
         // Filtered period totals (for charts, pies)
-        const totalIncome = dataToUse.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
-        const totalExpense = dataToUse.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
+        const totalIncome = periodTransactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
+        const totalExpense = periodTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
 
         // REAL balance = ALL-TIME income - ALL-TIME expenses (not filtered)
         const allTimeIncome = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
@@ -518,13 +543,17 @@ function App() {
 
         // --- Trend: Compare with previous month ---
         const now = new Date();
-        const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().substring(0, 10);
-        const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().substring(0, 10);
-        const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().substring(0, 10);
-        const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().substring(0, 10);
+        const currentMonthStart = localDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
+        const currentMonthEnd = localDateStr(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+        const prevMonthStart = localDateStr(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+        const prevMonthEnd = localDateStr(new Date(now.getFullYear(), now.getMonth(), 0));
 
-        const currentMonthTx = transactions.filter(t => t.date >= currentMonthStart && t.date <= currentMonthEnd);
-        const prevMonthTx = transactions.filter(t => t.date >= prevMonthStart && t.date <= prevMonthEnd);
+        const inRange = (date: string, start: string, end: string) => {
+            const day = date.substring(0, 10);
+            return day >= start && day <= end;
+        };
+        const currentMonthTx = transactions.filter(t => inRange(t.date, currentMonthStart, currentMonthEnd));
+        const prevMonthTx = transactions.filter(t => inRange(t.date, prevMonthStart, prevMonthEnd));
 
         const curIncome = currentMonthTx.filter(t => t.type === 'income').reduce((a, t) => a + t.amount, 0);
         const prevIncome = prevMonthTx.filter(t => t.type === 'income').reduce((a, t) => a + t.amount, 0);
@@ -583,7 +612,7 @@ function App() {
             .slice(0, 5);
 
         return { totalIncome, totalExpense, balance: realBalance, totalSavings, expensePieData, incomePieData, areaData, incomeTrend, expenseTrend, recentTransactions };
-    }, [filteredTransactions, transactions, savings, chartMode]);
+    }, [filteredTransactions, periodTransactions, transactions, savings, chartMode]);
 
     // --- Render Auth Views ---
     if (authLoading) return (
@@ -799,8 +828,10 @@ function App() {
 
                             {/* Income Card */}
                             <div
-                                onClick={() => { setView('transactions'); setFilterType('income'); setFilterCategory([]); }}
-                                className="bg-slate-800/80 rounded-2xl p-4 md:p-5 border border-slate-700/80 flex flex-col justify-between cursor-pointer hover:border-emerald-500/30 transition-all group"
+                                onClick={() => toggleTypeFilter('income')}
+                                role="button"
+                                aria-pressed={filterType === 'income'}
+                                className={`rounded-2xl p-4 md:p-5 border flex flex-col justify-between cursor-pointer transition-all group ${filterType === 'income' ? 'bg-emerald-500/10 border-emerald-500 ring-1 ring-emerald-500' : 'bg-slate-800/80 border-slate-700/80 hover:border-emerald-500/30'}`}
                             >
                                 <div className="flex justify-between items-center mb-2">
                                     <p className="text-slate-400 text-[11px] font-medium uppercase group-hover:text-emerald-300 transition-colors">Ingresos</p>
@@ -817,8 +848,10 @@ function App() {
 
                             {/* Expense Card */}
                             <div
-                                onClick={() => { setView('transactions'); setFilterType('expense'); setFilterCategory([]); }}
-                                className="bg-slate-800/80 rounded-2xl p-4 md:p-5 border border-slate-700/80 flex flex-col justify-between cursor-pointer hover:border-red-500/30 transition-all group"
+                                onClick={() => toggleTypeFilter('expense')}
+                                role="button"
+                                aria-pressed={filterType === 'expense'}
+                                className={`rounded-2xl p-4 md:p-5 border flex flex-col justify-between cursor-pointer transition-all group ${filterType === 'expense' ? 'bg-red-500/10 border-red-500 ring-1 ring-red-500' : 'bg-slate-800/80 border-slate-700/80 hover:border-red-500/30'}`}
                             >
                                 <div className="flex justify-between items-center mb-2">
                                     <p className="text-slate-400 text-[11px] font-medium uppercase group-hover:text-red-300 transition-colors">Egresos</p>
@@ -858,7 +891,7 @@ function App() {
                                 <div className="px-5 py-3 border-b border-slate-700/50 flex justify-between items-center">
                                     <h4 className="text-sm font-bold text-slate-300">Últimos Movimientos</h4>
                                     <button
-                                        onClick={() => setView('transactions')}
+                                        onClick={() => { setFilterType('all'); setFilterCategory([]); setView('transactions'); }}
                                         className="text-[10px] text-emerald-400 hover:text-emerald-300 font-semibold uppercase tracking-wider"
                                     >
                                         Ver todos →
@@ -1077,7 +1110,7 @@ function App() {
                                     description: `Cuota: ${inst.name}`,
                                     category: inst.category || 'Cuotas',
                                     type: 'expense' as const,
-                                    date: new Date().toISOString().substring(0, 10),
+                                    date: localDateStr(),
                                     paymentMethod: 'transfer' as const,
                                     method: 'manual' as const
                                 };

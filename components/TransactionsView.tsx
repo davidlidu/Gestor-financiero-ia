@@ -3,7 +3,7 @@ import { Download, ArrowRightLeft, Trash2, Search, Camera, Mic } from 'lucide-re
 import * as LucideIcons from 'lucide-react';
 import { Transaction, Category, AccountAlias } from '../types';
 import { annotateAccounts } from '../utils/accounts';
-import { formatMoney } from '../utils/format';
+import { formatMoney, localDateStr } from '../utils/format';
 
 interface TransactionsViewProps {
     filteredTransactions: Transaction[];
@@ -18,11 +18,11 @@ interface TransactionsViewProps {
 // --- Helpers for date grouping ---
 const getDateGroupLabel = (dateStr: string): string => {
     const today = new Date();
-    const todayStr = today.toISOString().substring(0, 10);
+    const todayStr = localDateStr(today);
 
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().substring(0, 10);
+    const yesterdayStr = localDateStr(yesterday);
 
     const cleanDate = dateStr.substring(0, 10);
 
