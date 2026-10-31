@@ -22,7 +22,7 @@ Esta función permite vincular tu cuenta de Google y crear gastos/ingresos a par
      (Para pruebas locales agrega también `http://localhost:4000/api/google/callback`.)
    - Al crear, copia el **Client ID** y el **Client Secret**.
 
-## 2. Variables de entorno del BACKEND (Dokploy)
+## 2. Variables de entorno del BACKEND (Dokploy).
 
 Agrega estas variables al servicio del backend y **redespliega**:
 
